@@ -14,7 +14,7 @@ pc-control doctor
 ```
 
 - `ready: true` → go ahead.
-- `ydotool` / `ydotoold` false → ask the user to run once: `sudo ./setup-uinput.sh` (needs sudo; never run sudo yourself).
+- `ydotool` / `ydotoold` false → ask the user to run once: `sudo ./install.sh --system` (needs sudo; never run sudo yourself).
 - `screenshot` false → ask the user to install a backend (`spectacle`, `grim`, `gnome-screenshot`, `wayshot`, or `scrot`).
 - `kwin` false → cursor/focus feedback is unavailable; `move` becomes approximate. Basic input still works.
 
@@ -75,13 +75,15 @@ pc-control resume                            # human only
 - On `human_paused` or `human_override`: stop immediately, do not retry, tell
   the human, and wait for an explicit `resume`.
 - Do not run `pause`/`resume` yourself; the human owns that channel.
-- If `setup-humanwatch.sh` is installed, **physical** mouse/keyboard input
+- The system install includes a humanwatch service; **physical** mouse/keyboard input
   within `PC_HUMAN_IDLE_MS` (default 800 ms) also blocks mutating calls with
   `error:"human_active"`. `status` reports `human_idle_ms`. Wait for idle,
   retry once; if it keeps happening, ask. The watcher stores only timestamps,
   never key contents.
-- Pause and `human_active` are global, but they do **not** coordinate two
-  agents. Do not run two pc-control drivers at once until a lease exists.
+- Pause and `human_active` are global. A **lease** coordinates agents: mutating
+  calls auto-acquire a 15 s lease (`PC_LEASE_TTL_MS`), and a second owner gets
+  `error:"lease_busy"`. Use `claim --ttl 60` for a long task, `renew`, and
+  `release` when done. The lease lives in the shared state dir (`PC_STATE_DIR`).
 
 ## The loop
 
@@ -146,6 +148,7 @@ wait MS
 run JSON [--continue-on-error]
 active | cursor | focus PATTERN
 pause [--reason TEXT] | resume | status
+claim [--ttl SECONDS] [--force] | renew [--ttl SECONDS] | release [--force]
 ```
 
 ## Failure handling

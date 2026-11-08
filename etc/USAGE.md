@@ -13,7 +13,7 @@ pc-control doctor
 Run `./pc-control` from a checkout, or `pc-control` when installed.
 
 `ready: true` means screenshots and input are available. If `ydotool` /
-`ydotoold` fail, a human must run `sudo ./setup-uinput.sh` once. Never run sudo
+`ydotoold` fail, a human must run `sudo ./install.sh --system` once. Never run sudo
 from the agent.
 
 ## System-prompt snippet
@@ -102,7 +102,7 @@ agent must stop and ask, never retry or resume on its own.
 `verified`; otherwise `verified` holds the checked cursor position. Without KWin
 feedback `verified` is `false` (the click proceeds).
 
-If the optional `sudo ./setup-humanwatch.sh` service is installed, physical
+The system install includes a humanwatch service; physical
 input is detected through evdev. Mutating calls then fail with
 `error:"human_active"` while the last physical event is younger than
 `PC_HUMAN_IDLE_MS` (default 800). `status` reports `human_idle_ms`. The watcher
@@ -113,9 +113,20 @@ Error codes: `human_paused`, `human_override`, `human_active`.
 
 ### Concurrency
 
-Pause and `human_active` are global, but they do not arbitrate between two
-automation clients. Two agents can still interleave mouse/keyboard actions.
-Run one pc-control driver at a time until the lease stage lands.
+Pause and `human_active` are global. For two automation clients, use the lease:
+
+```bash
+pc-control claim --ttl 60     # owner, expiry, heartbeat via renew
+pc-control status             # {"lease": {...}}
+pc-control renew --ttl 60
+pc-control release
+```
+
+Every mutating call automatically takes/renews a 15 s lease
+(`PC_LEASE_TTL_MS`). A second owner gets `error:"lease_busy"` until the holder
+releases or the lease expires. `--force` steals it. Identity comes from
+`PC_AGENT_ID`, then `DSH_SESSION_ID`, then the parent PID; the lease file lives
+in the shared `PC_STATE_DIR`.
 
 ## Batch format
 

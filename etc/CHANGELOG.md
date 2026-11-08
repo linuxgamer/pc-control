@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0
+
+- Unified `install.sh`: user install by default, `--system` for uinput +
+  ydotool + ydotoold + humanwatch; `--uninstall` for either. Removed the two
+  setup scripts.
+- Lease coordination: `claim`/`renew`/`release`; every mutating call takes or
+  renews a 15 s lease; a second owner gets `lease_busy`.
+- Lease identity from `PC_AGENT_ID`, `DSH_SESSION_ID`, or the parent PID; the
+  lease file lives in the shared state dir.
+- 36 unit tests.
+
 ## 0.5.0
 
 - Optional `setup-humanwatch.sh` root service: physical mouse/keyboard activity

@@ -7,10 +7,8 @@ setup script, docs, and tests.
 
 ```
 pc-control       single-file CLI (stdlib; Pillow for compact shots)
-setup-uinput.sh  one-time root setup for uinput + ydotool
-install.sh       user-level installer (CLI + skill)
-setup-humanwatch.sh  optional root service: physical input timestamps
-scripts/humanwatch.py  the evdev watcher
+install.sh       user installer + --system host setup
+scripts/humanwatch.py  evdev input watcher (timestamp only)
 etc/SKILL.md     DeepSeek Harness skill
 etc/USAGE.md     generic agent instructions
 etc/test_pc_control.py
@@ -25,7 +23,7 @@ pyproject.toml   pip/pipx packaging (script-files)
 ./.pc-control/bin/pc-control shot
 ```
 
-`setup-uinput.sh` needs sudo once; don't run it in CI.
+`install.sh --system` needs sudo once; don't run it in CI.
 
 ## Tests
 

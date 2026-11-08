@@ -5,7 +5,7 @@ This never records key codes, button numbers, or text — only "a human touched
 an input device at TIME". It skips the ydotool virtual device so the agent's
 own synthetic input does not count as human activity.
 
-Run as root (reads /dev/input); see setup-humanwatch.sh.
+Run as root (reads /dev/input); see install.sh --system.
 """
 
 from __future__ import annotations

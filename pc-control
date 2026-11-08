@@ -14,6 +14,7 @@ back to native pixels automatically.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import random
@@ -24,9 +25,10 @@ import subprocess
 import sys
 import tempfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 APP = "pc-control"
 DEFAULT_MAX_WIDTH = 1280
 JPEG_QUALITY = 72
@@ -295,6 +297,125 @@ def check_human_idle() -> None:
 def check_gate() -> None:
     check_pause()
     check_human_idle()
+    ensure_lease()
+
+
+def agent_id() -> str:
+    return (os.environ.get("PC_AGENT_ID")
+            or os.environ.get("DSH_SESSION_ID")
+            or f"pid-{os.getppid()}")
+
+
+def lease_ttl_ms() -> int:
+    try:
+        value = int(os.environ.get("PC_LEASE_TTL_MS", "15000"))
+    except ValueError:
+        value = 15000
+    return max(1000, value)
+
+
+def lease_path() -> Path:
+    return state_dir() / "lease.json"
+
+
+@contextmanager
+def lease_lock():
+    handle = (state_dir() / "lease.lock").open("a+")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(handle, fcntl.LOCK_UN)
+        handle.close()
+
+
+def read_lease() -> dict | None:
+    try:
+        data = json.loads(lease_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def write_lease(data: dict) -> None:
+    path = lease_path()
+    tmp = path.with_name("lease.json.tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def lease_info(lease: dict) -> dict:
+    now = time.time()
+    return {
+        "owner": lease.get("owner"),
+        "mine": lease.get("owner") == agent_id(),
+        "expires_in_ms": max(0, round((float(lease.get("expires") or 0) - now) * 1000)),
+        "ttl_ms": lease.get("ttl_ms"),
+        "pid": lease.get("pid"),
+    }
+
+
+def claim_lease(owner: str, ttl_ms: int, force: bool = False) -> dict:
+    now = time.time()
+    with lease_lock():
+        current = read_lease()
+        if (current and float(current.get("expires") or 0) > now
+                and current.get("owner") != owner and not force):
+            remain = max(0, round((float(current["expires"]) - now) * 1000))
+            raise PcError(
+                "lease_busy",
+                f"{current.get('owner')} holds the lease for another {remain}ms; "
+                "wait, release it, or use --force",
+            )
+        data = {
+            "owner": owner,
+            "expires": now + ttl_ms / 1000.0,
+            "ttl_ms": ttl_ms,
+            "acquired": now,
+            "pid": os.getpid(),
+        }
+        write_lease(data)
+        return data
+
+
+def ensure_lease() -> dict | None:
+    if os.environ.get("PC_LEASE_DISABLED") == "1":
+        return None
+    return claim_lease(agent_id(), lease_ttl_ms())
+
+
+def release_lease(owner: str, force: bool = False) -> bool:
+    with lease_lock():
+        current = read_lease()
+        if not current:
+            return False
+        if current.get("owner") != owner and not force:
+            raise PcError("lease_not_mine",
+                          f"lease is held by {current.get('owner')}; use --force to clear")
+        lease_path().unlink(missing_ok=True)
+        return True
+
+
+def cmd_claim(ttl_seconds: float = 60.0, force: bool = False) -> dict:
+    lease = claim_lease(agent_id(), max(1000, int(ttl_seconds * 1000)), force)
+    return {"ok": True, "lease": lease_info(lease)}
+
+
+def cmd_renew(ttl_seconds: float | None = None) -> dict:
+    current = read_lease()
+    if not current:
+        raise PcError("lease_not_held", "no lease to renew; use claim")
+    if current.get("owner") != agent_id():
+        raise PcError("lease_busy", f"lease is held by {current.get('owner')}")
+    ttl = int(ttl_seconds * 1000) if ttl_seconds else int(current.get("ttl_ms") or lease_ttl_ms())
+    lease = claim_lease(agent_id(), max(1000, ttl))
+    return {"ok": True, "lease": lease_info(lease)}
+
+
+def cmd_release(force: bool = False) -> dict:
+    released = release_lease(agent_id(), force)
+    return {"ok": True, "released": released, "lease": (
+        lease_info(read_lease()) if read_lease() else None)}
 
 
 def cmd_pause(reason: str | None = None) -> dict:
@@ -324,12 +445,15 @@ def cmd_status() -> dict:
     meta = read_pause()
     idle = human_idle_ms()
     threshold = human_threshold_ms()
+    lease = read_lease()
     result = {
         "ok": True,
+        "agent_id": agent_id(),
         "paused": bool(meta),
         "human_active": idle is not None and idle < threshold,
         "human_idle_ms": None if idle is None else round(idle),
         "human_threshold_ms": threshold,
+        "lease": lease_info(lease) if lease else None,
     }
     if meta:
         result.update(meta)
@@ -750,7 +874,7 @@ def socket_path() -> str:
 def ydotool(args: list[str], timeout: int = 15) -> None:
     exe = which("ydotool")
     if not exe:
-        raise PcError("ydotool is not installed", "Run: sudo ./setup-uinput.sh")
+        raise PcError("ydotool is not installed", "Run: sudo ./install.sh --system")
     sock = socket_path()
     env = os.environ.copy()
     env["YDOTOOL_SOCKET"] = sock
@@ -991,12 +1115,14 @@ def cmd_doctor() -> dict:
     add("tesseract", bool(which("tesseract")),
         f"languages: {', '.join(langs) if langs else 'none'}", required=False)
     add("state", _writable(state_dir()), str(state_dir()))
-    watch_active = False
+    watch_state = ""
     if which("systemctl"):
-        watch_active = run(["systemctl", "is-active", "pc-control-humanwatch"],
-                           timeout=5).stdout.strip() == "active"
+        watch_state = run(["systemctl", "is-active", "pc-control-humanwatch"],
+                          timeout=5).stdout.strip()
+    watch_active = watch_state == "active"
     watch_file = Path("/run/pc-control") / f"human-{os.getuid()}"
-    watch_detail = "service active" if watch_active else "not installed (optional: setup-humanwatch.sh)"
+    watch_detail = (f"service {watch_state}" if watch_state
+                    else "not detected (run: sudo ./install.sh --system)")
     if watch_file.exists():
         watch_detail += "; timestamp file present"
     add("humanwatch", watch_active, watch_detail, required=False)
@@ -1104,6 +1230,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--reason")
     sub.add_parser("resume")
     sub.add_parser("status")
+    p = sub.add_parser("claim")
+    p.add_argument("--ttl", type=float, default=60.0, metavar="SECONDS")
+    p.add_argument("--force", action="store_true")
+    p = sub.add_parser("renew")
+    p.add_argument("--ttl", type=float, default=None, metavar="SECONDS")
+    p = sub.add_parser("release")
+    p.add_argument("--force", action="store_true")
 
     p = sub.add_parser("shot")
     p.add_argument("--window", action="store_true")
@@ -1180,6 +1313,12 @@ def main(argv: list[str]) -> None:
             emit(cmd_resume())
         if args.command == "status":
             emit(cmd_status())
+        if args.command == "claim":
+            emit(cmd_claim(args.ttl, args.force))
+        if args.command == "renew":
+            emit(cmd_renew(args.ttl))
+        if args.command == "release":
+            emit(cmd_release(args.force))
         if args.command == "shot":
             kind = "window" if args.window else "screen" if args.screen else "full"
             emit(screenshot(kind, args.out, args.region, args.max_width, args.full,

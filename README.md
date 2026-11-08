@@ -53,15 +53,15 @@ read an image can drive it.
 git clone https://github.com/linuxgamer/pc-control.git
 cd pc-control
 ./install.sh                 # ~/.local/bin/pc-control + ~/.dsh/skills/pc-control
-sudo ./setup-uinput.sh       # once: uinput module, udev rule, ydotoold
-sudo ./setup-humanwatch.sh   # optional: physical input detection
+sudo ./install.sh --system   # once: uinput, ydotoold, humanwatch
 pc-control doctor
 ```
 
-`install.sh` needs no sudo. `setup-uinput.sh` installs `ydotool` with your
-package manager (pacman/apt/dnf/zypper), loads `uinput`, adds one udev rule, and
-runs `ydotoold` with a socket owned by your user (`/run/ydotool.sock`, mode
-0600).
+`install.sh` needs no sudo for the user install. `sudo ./install.sh --system`
+installs `ydotool` with your package manager (pacman/apt/dnf/zypper), loads
+`uinput`, adds the udev rule, and runs `ydotoold` plus the humanwatch service
+(opt out with `--no-humanwatch`). The socket is `/run/ydotool.sock`, owned by
+your user, mode 0600.
 
 From a checkout with pip or pipx:
 
@@ -115,6 +115,7 @@ wait MS
 run JSON [--continue-on-error]
 active | cursor | focus PATTERN
 pause [--reason TEXT] | resume | status
+claim [--ttl SECONDS] [--force] | renew [--ttl SECONDS] | release [--force]
 ```
 
 `run` actions: `shot`, `move`, `move-rel`, `click`, `down`, `up`, `key`, `type`,
@@ -154,6 +155,7 @@ live aiming.
 | `error:"human_paused"` | The human paused control; stop and ask them to `pc-control resume`. |
 | `error:"human_override"` | The cursor moved before the click; do not retry blindly — take a fresh shot. |
 | `error:"human_active"` | Physical input was detected; wait for `PC_HUMAN_IDLE_MS` and retry once. |
+| `error:"lease_busy"` | Another agent holds the lease; wait, `release`, or coordinate. |
 | OCR text looks wrong | Check `ocr_lang` in the shot JSON; install the matching Tesseract language and pass `--ocr-lang` (e.g. `rus`). Mixed/Cyrillic UI can still transliterate. |
 
 ## Configuration
@@ -164,6 +166,8 @@ live aiming.
 | `PC_SCREENSHOT_BACKEND` | auto | `spectacle`, `grim`, `gnome-screenshot`, `wayshot`, `scrot`, `import` |
 | `PC_OCR_LANG` | from `LANG`, then `eng` | Tesseract language |
 | `PC_HUMAN_IDLE_MS` | `800` | Ignore mutating calls this long after physical input |
+| `PC_LEASE_TTL_MS` | `15000` | Auto-lease lifetime; renewed on every mutating call |
+| `PC_AGENT_ID` | session/parent | Lease owner identity |
 | `YDOTOOL_SOCKET` | `/run/ydotool.sock` | Daemon socket |
 
 ## Development
@@ -177,10 +181,8 @@ Layout:
 
 ```
 pc-control       single-file CLI (stdlib; Pillow optional)
-setup-uinput.sh  one-time root setup
-install.sh       user-level installer (CLI + skill)
-setup-humanwatch.sh  optional root service: physical input timestamps
-scripts/humanwatch.py  the evdev watcher
+install.sh       user installer + --system host setup
+scripts/humanwatch.py  evdev input watcher (timestamp only)
 etc/SKILL.md     skill for any harness
 etc/USAGE.md     generic agent instructions
 ```

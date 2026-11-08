@@ -273,6 +273,50 @@ class HumanGateTests(TmpState):
             yd.assert_not_called()
 
 
+class LeaseTests(TmpState):
+    def setUp(self):
+        super().setUp()
+        self._old_agent = os.environ.get("PC_AGENT_ID")
+        os.environ["PC_AGENT_ID"] = "agent-a"
+
+    def tearDown(self):
+        if self._old_agent is None:
+            os.environ.pop("PC_AGENT_ID", None)
+        else:
+            os.environ["PC_AGENT_ID"] = self._old_agent
+        super().tearDown()
+
+    def test_claim_and_release(self):
+        lease = pc.cmd_claim(30)["lease"]
+        self.assertTrue(lease["mine"])
+        self.assertEqual(pc.cmd_status()["lease"]["owner"], "agent-a")
+        self.assertTrue(pc.cmd_release()["released"])
+        self.assertIsNone(pc.cmd_status()["lease"])
+
+    def test_second_agent_busy(self):
+        pc.cmd_claim(30)
+        os.environ["PC_AGENT_ID"] = "agent-b"
+        with mock.patch.object(pc, "ydotool") as yd:
+            with self.assertRaises(pc.PcError) as ctx:
+                pc.cmd_move(10, 10)
+            self.assertEqual(str(ctx.exception), "lease_busy")
+            yd.assert_not_called()
+
+    def test_expired_lease_taken_over(self):
+        path = pc.lease_path()
+        path.write_text(json.dumps({"owner": "agent-a", "expires": time.time() - 1,
+                                    "ttl_ms": 1000}), encoding="utf-8")
+        os.environ["PC_AGENT_ID"] = "agent-b"
+        self.assertEqual(pc.cmd_claim(30)["lease"]["owner"], "agent-b")
+
+    def test_auto_lease_on_move(self):
+        with mock.patch.object(pc, "cursor_pos", return_value=(10, 10)), \
+             mock.patch.object(pc, "ydotool"):
+            pc.cmd_move(10, 10)
+        lease = pc.read_lease()
+        self.assertEqual(lease["owner"], "agent-a")
+
+
 class CliTests(unittest.TestCase):
     def test_version(self):
         out = subprocess.run([sys.executable, str(CLI), "--version"],

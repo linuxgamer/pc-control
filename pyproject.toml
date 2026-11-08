@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pc-control"
-version = "0.5.0"
+version = "0.6.0"
 description = "LLM-friendly Linux desktop control: compact screenshots, OCR, real mouse/keyboard on Wayland/X11"
 readme = "README.md"
 requires-python = ">=3.9"
