@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.1
+
+- OCR auto-inverts dark screenshots before Tesseract (`--ocr-preprocess
+  auto|invert|none`, `PC_OCR_PREPROCESS`), fixing dark terminal/UI OCR.
+- 63 tests.
+
 ## 0.9.0
 
 - Takeover warning: when physical input is active, a mutating action sends a

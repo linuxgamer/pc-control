@@ -24,6 +24,10 @@ in [`etc/USAGE.md`](etc/USAGE.md) and [`etc/SKILL.md`](etc/SKILL.md).
 
 ## Install
 
+Choose **one** install method. `--system` already installs the CLI, skill, and
+services; do not also run `./install.sh` on the same machine — it creates a
+shadow copy. The user install is for machines without root.
+
 ### Recommended (any distro)
 
 ```bash
@@ -165,8 +169,8 @@ agent ── shell ──► pc-control ──► spectacle / grim / gnome-scree
 
 - **Real input** — `ydotool` creates a kernel virtual device, so native Wayland
   apps and games receive mouse/keyboard, including relative look.
-- **Token-aware screenshots** — 1280 px JPEG by default, `--region`, `--ocr`,
-  `--grid`, `--full`.
+- **Token-aware screenshots** — 1280 px JPEG by default, `--region`, `--ocr`
+  (with auto-invert for dark UIs), `--grid`, `--full`.
 - **Automatic coordinate mapping** — image pixels map to native and then to the compositor's logical input.
 - **Closed-loop movement** — reads the KWin cursor and lands within ~2 px.
 - **Window focus** — unminimizes and activates by title/class without clicking a
@@ -267,6 +271,7 @@ live aiming.
 | `PC_SCREENSHOT_BACKEND` | auto | `spectacle`, `grim`, `gnome-screenshot`, `wayshot`, `scrot`, `import` |
 | `PC_OCR_LANG` | from `LANG`, then `eng` | Tesseract language |
 | `PC_OCR_MAX_CHARS` | `4000` | OCR text cap; `0` disables truncation |
+| `PC_OCR_PREPROCESS` | `auto` | `auto`, `invert`, or `none` for dark UIs |
 | `PC_HUMAN_IDLE_MS` | `800` | Consider physical input active this long |
 | `PC_TAKEOVER_GRACE_MS` | `5000` | Notification countdown before acting while active |
 | `PC_TAKEOVER_NOTIFY` | `1` | Set `0` to disable the takeover notification |

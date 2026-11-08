@@ -603,6 +603,34 @@ class HumanModeTests(unittest.TestCase):
         self.assertIn("pc-control screenshot", text)
 
 
+class OcrPreprocessTests(TmpState):
+    def test_auto_inverts_dark_images(self):
+        try:
+            from PIL import Image
+        except ImportError:
+            self.skipTest("Pillow not installed")
+        path = Path(self._tmp.name) / "dark.png"
+        Image.new("L", (16, 16), 20).save(path)
+        out, temporary = pc.preprocess_ocr(path, "auto")
+        self.assertTrue(temporary)
+        with Image.open(out) as image:
+            mean = sum(i * n for i, n in enumerate(image.histogram())) / 256
+        self.assertGreater(mean, 200)
+        out.unlink()
+
+    def test_none_returns_original(self):
+        path = Path(self._tmp.name) / "plain.png"
+        path.write_bytes(b"not-an-image")
+        out, temporary = pc.preprocess_ocr(path, "none")
+        self.assertEqual(out, path)
+        self.assertFalse(temporary)
+
+    def test_mode_from_env(self):
+        with mock.patch.dict(os.environ, {"PC_OCR_PREPROCESS": "invert"}, clear=False):
+            self.assertEqual(pc.ocr_preprocess_mode(None), "invert")
+        self.assertEqual(pc.ocr_preprocess_mode("bogus"), "auto")
+
+
 class CliTests(unittest.TestCase):
     def test_version(self):
         out = subprocess.run([sys.executable, str(CLI), "--version"],

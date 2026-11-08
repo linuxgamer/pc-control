@@ -29,7 +29,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-VERSION = "0.9.0"
+VERSION = "0.9.1"
 APP = "pc-control"
 DEFAULT_MAX_WIDTH = 1280
 JPEG_QUALITY = 72
@@ -680,11 +680,46 @@ def require_pillow():
         ) from exc
 
 
-def ocr_text(path: Path, lang: str) -> str:
+def ocr_preprocess_mode(override: str | None = None) -> str:
+    value = (override or os.environ.get("PC_OCR_PREPROCESS") or "auto").lower()
+    return value if value in ("auto", "invert", "none") else "auto"
+
+
+def preprocess_ocr(path: Path, mode: str) -> tuple[Path, bool]:
+    """Return a Tesseract-friendly image (dark UIs are inverted)."""
+    mode = mode if mode in ("auto", "invert", "none") else "auto"
+    if mode == "none":
+        return path, False
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:
+        return path, False
+    try:
+        with Image.open(path) as source:
+            image = source.convert("L")
+        histogram = image.histogram()
+        total = max(1, sum(histogram))
+        mean = sum(i * count for i, count in enumerate(histogram)) / total
+        if mode == "invert" or (mode == "auto" and mean < 128):
+            image = ImageOps.invert(image)
+        image = ImageOps.autocontrast(image)
+        tmp = state_dir() / f".ocr-{os.getpid()}-{random.randrange(0xFFFF):04x}.png"
+        image.save(tmp)
+        return tmp, True
+    except OSError:
+        return path, False
+
+
+def ocr_text(path: Path, lang: str, preprocess: str = "auto") -> str:
     exe = which("tesseract")
     if not exe:
         raise PcError("tesseract is not installed", "Install tesseract-ocr to use --ocr.")
-    proc = run([exe, str(path), "stdout", "-l", lang], timeout=30)
+    source, temporary = preprocess_ocr(path, preprocess)
+    try:
+        proc = run([exe, str(source), "stdout", "-l", lang], timeout=30)
+    finally:
+        if temporary:
+            source.unlink(missing_ok=True)
     if proc.returncode != 0:
         raise PcError(f"tesseract failed: {(proc.stderr or proc.stdout).strip()[:200]}")
     return proc.stdout.strip()
@@ -782,7 +817,8 @@ def add_grid(image, draw, step: int = 100) -> None:
 def screenshot(kind: str = "full", out: str | None = None, region: list[int] | None = None,
                max_width: int | None = None, full: bool = False, grid: bool = False,
                ocr: bool = False, lang: str | None = None,
-               ocr_max_chars: int | None = None) -> dict:
+               ocr_max_chars: int | None = None,
+               ocr_preprocess: str | None = None) -> dict:
     require_shared_state()
     state = state_dir()
     shots_dir()
@@ -810,10 +846,12 @@ def screenshot(kind: str = "full", out: str | None = None, region: list[int] | N
         text = None
         ocr_error = None
         ocr_lang = None
+        ocr_mode = None
         if ocr:
             try:
                 ocr_lang = pick_ocr_lang(lang)
-                text = ocr_text(work, ocr_lang)
+                ocr_mode = ocr_preprocess_mode(ocr_preprocess)
+                text = ocr_text(work, ocr_lang, ocr_mode)
             except PcError as exc:
                 ocr_error = str(exc)
                 if exc.hint:
@@ -880,6 +918,7 @@ def screenshot(kind: str = "full", out: str | None = None, region: list[int] | N
             meta["ocr"] = text
         if ocr_lang is not None:
             meta["ocr_lang"] = ocr_lang
+            meta["ocr_preprocess"] = ocr_mode
         if ocr_chars is not None:
             meta["ocr_chars"] = ocr_chars
             meta["ocr_truncated"] = ocr_truncated
@@ -988,11 +1027,13 @@ def open_path(path: Path) -> bool:
 def human_screenshot(kind: str = "full", out: str | None = None,
                      region: list[int] | None = None, max_width: int | None = None,
                      grid: bool = False, ocr: bool = False, lang: str | None = None,
-                     ocr_max_chars: int | None = None, open_image: bool = True) -> dict:
+                     ocr_max_chars: int | None = None, ocr_preprocess: str | None = None,
+                     open_image: bool = True) -> dict:
     require_shared_state()
     path = human_shot_path(out)
     full = max_width is None
-    meta = screenshot(kind, str(path), region, max_width, full, grid, ocr, lang, ocr_max_chars)
+    meta = screenshot(kind, str(path), region, max_width, full, grid, ocr, lang,
+                      ocr_max_chars, ocr_preprocess)
     opened = open_path(Path(meta["path"])) if open_image else False
     size = f'{meta["width"]}x{meta["height"]}'
     if meta.get("native_width") and meta["width"] != meta["native_width"]:
@@ -1476,6 +1517,7 @@ def dispatch(action: dict) -> dict:
             bool(action.get("ocr", False)),
             action.get("ocr_lang"),
             action.get("ocr_max_chars"),
+            action.get("ocr_preprocess"),
         )
     if name == "move":
         return cmd_move(float(action["x"]), float(action["y"]),
@@ -1580,6 +1622,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--ocr", action="store_true")
     p.add_argument("--ocr-lang", default=None)
     p.add_argument("--ocr-max-chars", type=int, default=None)
+    p.add_argument("--ocr-preprocess", choices=("auto", "invert", "none"), default=None)
     p.add_argument("--human", action="store_true")
     p.add_argument("--json", action="store_true")
     p.add_argument("--no-open", action="store_false", dest="open_image")
@@ -1594,6 +1637,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--ocr", action="store_true")
     p.add_argument("--ocr-lang", default=None)
     p.add_argument("--ocr-max-chars", type=int, default=None)
+    p.add_argument("--ocr-preprocess", choices=("auto", "invert", "none"), default=None)
     p.add_argument("--no-open", action="store_false", dest="open_image")
     p.add_argument("--json", action="store_true")
 
@@ -1677,18 +1721,20 @@ def main(argv: list[str]) -> None:
             if wants_human(args):
                 human_screenshot(kind, args.out, args.region, args.max_width,
                                  args.grid, args.ocr, args.ocr_lang, args.ocr_max_chars,
-                                 open_image=args.open_image)
+                                 args.ocr_preprocess, open_image=args.open_image)
                 sys.exit(0)
             emit(screenshot(kind, args.out, args.region, args.max_width, args.full,
-                            args.grid, args.ocr, args.ocr_lang, args.ocr_max_chars))
+                            args.grid, args.ocr, args.ocr_lang, args.ocr_max_chars,
+                            args.ocr_preprocess))
         if args.command == "screenshot":
             kind = "window" if args.window else "screen" if args.screen else "full"
             if args.json:
                 emit(screenshot(kind, args.out, args.region, args.max_width, False,
-                                args.grid, args.ocr, args.ocr_lang, args.ocr_max_chars))
+                                args.grid, args.ocr, args.ocr_lang, args.ocr_max_chars,
+                                args.ocr_preprocess))
             human_screenshot(kind, args.out, args.region, args.max_width,
                              args.grid, args.ocr, args.ocr_lang, args.ocr_max_chars,
-                             open_image=args.open_image)
+                             args.ocr_preprocess, open_image=args.open_image)
             sys.exit(0)
         if args.command == "move":
             emit(cmd_move(args.x, args.y, args.native, args.scaled, args.dry_run))

@@ -15,8 +15,9 @@ sudo ./install.sh --system
 ```
 
 This installs `pc-control` and the host services needed for mouse/keyboard
-control. Without root, `./install.sh` installs the CLI to `~/.local/bin`; the
-input services still need the system step.
+control. Pick this **or** the no-root user install, not both: `./install.sh`
+creates a second copy in `~/.local/bin`, which can shadow the system one.
+Without root, use `./install.sh`; the input services still need the system step.
 
 ### Arch Linux
 
@@ -34,7 +35,7 @@ submitted yet.
 ```bash
 pipx install .
 # or, after a release:
-pipx install https://github.com/linuxgamer/pc-control/releases/download/v0.9.0/pc_control-0.9.0-py3-none-any.whl
+pipx install https://github.com/linuxgamer/pc-control/releases/download/v0.9.1/pc_control-0.9.1-py3-none-any.whl
 ```
 
 This gives you the `pc-control` command, but not the root services.

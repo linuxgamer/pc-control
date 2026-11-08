@@ -63,6 +63,8 @@ Failure (exit 1):
 
 OCR is best-effort: it depends on the installed Tesseract languages
 (`--ocr-lang` / `PC_OCR_LANG`), and mixed or Cyrillic UI can transliterate.
+Dark screenshots are inverted automatically (`PC_OCR_PREPROCESS=auto`); use
+`--ocr-preprocess none` to disable.
 Locale codes are mapped (`ru`→`rus`, `en`→`eng`); if no language matches,
 the shot returns `ocr_error` instead of silently using an unrelated language.
 

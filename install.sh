@@ -71,6 +71,10 @@ if [[ ${SYSTEM} -eq 0 ]]; then
     echo "error: python3 is required" >&2
     exit 1
   }
+  if [[ -x /usr/local/bin/pc-control && "${BIN_DIR}/pc-control" != "/usr/local/bin/pc-control" ]]; then
+    echo "note: /usr/local/bin/pc-control is already installed; this creates a second copy." >&2
+    echo "      update the system copy instead: sudo ${HERE}/install.sh --system" >&2
+  fi
   install -Dm755 "${HERE}/pc-control" "${BIN_DIR}/pc-control"
   rm -f "${XDG_DATA_HOME:-$HOME/.local/share}/applications/pc-control.desktop"
   if [[ ${INSTALL_SKILL} -eq 1 ]]; then
@@ -179,6 +183,10 @@ TARGET_HOME="$(getent passwd "${TARGET_UID}" 2>/dev/null | cut -d: -f6)"
 if [[ ${CLI_SYSTEM} -eq 1 ]]; then
   echo "==> ${CLI_DEST}"
   install -Dm755 "${HERE}/pc-control" "${CLI_DEST}"
+  if [[ -n "${TARGET_HOME}" && -e "${TARGET_HOME}/.local/bin/pc-control" ]]; then
+    rm -f "${TARGET_HOME}/.local/bin/pc-control"
+    echo "    removed duplicate user copy: ${TARGET_HOME}/.local/bin/pc-control"
+  fi
 fi
 rm -f /usr/share/applications/pc-control.desktop
 install -d /etc/pc-control
