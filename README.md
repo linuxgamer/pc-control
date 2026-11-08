@@ -140,6 +140,16 @@ pc-control up left
 Each observe→act cycle is ~1–3 s: fine for menus, walking, and chat, not for
 live aiming.
 
+## Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| A click seems ignored | Take a fresh `shot` first. A collapsed sidebar, hidden panel, or moved window changes the layout, so an old coordinate now hits empty space. |
+| A window disappeared | You clicked its title bar; `focus PATTERN` restores it. |
+| `move` reports a warning | Retry once; if it persists, take a shot and verify the pointer's effect. |
+| `no screenshot backend` | Install `spectacle`, `grim`, `gnome-screenshot`, `wayshot`, or `scrot`. |
+| `ydotool failed` | `pc-control doctor`; check `ydotoold` and the socket. |
+
 ## Configuration
 
 | Variable | Default | Meaning |

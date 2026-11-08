@@ -45,6 +45,13 @@ mapping, OCR language selection, CLI surface).
 - Keep `README.md`, `etc/SKILL.md`, and `etc/USAGE.md` in sync when commands
   change.
 
+## Debugging ignored clicks
+
+Take a fresh screenshot before concluding that a click was swallowed. Collapsed
+sidebars, hidden panels, and moved windows change the layout, so coordinates
+from an older shot can land on empty space. `pc-control` clicks in the pixel
+space of the latest shot; it has no semantic model of the UI.
+
 ## Screenshot backends
 
 Add a branch in `capture()` and to `SCREENSHOT_BACKENDS`. Full-screen capture is
