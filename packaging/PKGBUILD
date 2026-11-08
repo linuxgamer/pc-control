@@ -10,7 +10,7 @@ depends=('python' 'python-pillow' 'ydotool')
 optdepends=('tesseract: OCR support')
 install=pc-control.install
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('76a8c75e95e248270fe4b5442a8caf2631253a326eb81b5f43fc25d0948b5f05')
 
 package() {
   cd "$pkgname-$pkgver"
