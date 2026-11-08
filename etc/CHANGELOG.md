@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.2
+
+- Fixed takeover countdown race: it no longer exits early when the human stops
+  moving to press pause. The full `PC_TAKEOVER_GRACE_MS` countdown is honored.
+- Pause is re-checked immediately before every input injection (key, type,
+  click, button, scroll, focus, move-rel), narrowing the pause/action race.
+- 64 tests.
+
 ## 0.9.1
 
 - OCR auto-inverts dark screenshots before Tesseract (`--ocr-preprocess

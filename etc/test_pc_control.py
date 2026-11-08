@@ -35,7 +35,11 @@ class TmpState(unittest.TestCase):
         self._old_human = os.environ.get("PC_HUMAN_IDLE_MS")
         self._old_grace = os.environ.get("PC_TAKEOVER_GRACE_MS")
         self._old_notify = os.environ.get("PC_TAKEOVER_NOTIFY")
+        self._old_control = os.environ.get("PC_CONTROL_DIR")
+        control = Path(self._tmp.name) / "control"
+        control.mkdir()
         os.environ["PC_STATE_DIR"] = self._tmp.name
+        os.environ["PC_CONTROL_DIR"] = str(control)
         os.environ["PC_HUMAN_IDLE_MS"] = "0"
         os.environ["PC_TAKEOVER_GRACE_MS"] = "0"
         os.environ["PC_TAKEOVER_NOTIFY"] = "0"
@@ -59,6 +63,10 @@ class TmpState(unittest.TestCase):
             os.environ.pop("PC_TAKEOVER_NOTIFY", None)
         else:
             os.environ["PC_TAKEOVER_NOTIFY"] = self._old_notify
+        if self._old_control is None:
+            os.environ.pop("PC_CONTROL_DIR", None)
+        else:
+            os.environ["PC_CONTROL_DIR"] = self._old_control
         pc._STATE = None
         pc._TAKEOVER_USED = False
 
@@ -377,6 +385,13 @@ class TakeoverTests(TmpState):
         pc.check_gate()
         self.assertGreaterEqual(time.monotonic() - start, 0.2)
         self.assertTrue(pc._TAKEOVER_USED)
+
+    def test_waits_full_grace_even_if_human_stops(self):
+        self.stamp(0.1)
+        os.environ["PC_TAKEOVER_GRACE_MS"] = "400"
+        start = time.monotonic()
+        pc.check_gate()
+        self.assertGreaterEqual(time.monotonic() - start, 0.35)
 
     def test_zero_grace_still_blocks(self):
         os.environ["PC_TAKEOVER_GRACE_MS"] = "0"

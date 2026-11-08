@@ -29,7 +29,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-VERSION = "0.9.1"
+VERSION = "0.9.2"
 APP = "pc-control"
 DEFAULT_MAX_WIDTH = 1280
 JPEG_QUALITY = 72
@@ -371,9 +371,6 @@ def check_gate(grace: bool = True) -> None:
         deadline = time.monotonic() + grace_ms / 1000.0
         while time.monotonic() < deadline:
             check_pause()
-            current = human_idle_ms()
-            if current is None or current >= threshold:
-                break
             time.sleep(0.1)
         check_pause()
     else:
@@ -1144,6 +1141,7 @@ def cmd_active() -> dict:
 
 def cmd_focus(pattern: str) -> dict:
     check_gate()
+    check_pause()
     body = (
         'var pat = ' + json.dumps(pattern.lower()) + ';\n'
         'var list = (typeof workspace.windowList === "function") ? workspace.windowList() : workspace.clientList();\n'
@@ -1304,6 +1302,7 @@ def cmd_move_rel(dx: float, dy: float, dry_run: bool = False) -> dict:
     args = ["mousemove", "-x", str(round(dx)), "-y", str(round(dy))]
     if dry_run:
         return {"ok": True, "dry_run": True, "ydotool": args}
+    check_pause()
     ydotool(args)
     return {"ok": True, "relative": [round(dx), round(dy)]}
 
@@ -1360,6 +1359,7 @@ def cmd_click(button: str, double: bool = False, at: list[float] | None = None,
     args.append(hex(BUTTONS[button][0]))
     if dry_run:
         return {"ok": True, "dry_run": True, "ydotool": args, "moved": moved}
+    check_pause()
     ydotool(args)
     return {"ok": True, "button": button, "double": double, "moved": moved,
             "verified": verified}
@@ -1370,6 +1370,7 @@ def cmd_button(button: str, pressed: bool) -> dict:
     if button not in BUTTONS:
         raise PcError(f"unknown button {button!r}", "left, right, middle, side, extra")
     code = BUTTONS[button][1]
+    check_pause()
     ydotool(["key", f"{code}:{1 if pressed else 0}"])
     return {"ok": True, "button": button, "state": "down" if pressed else "up"}
 
@@ -1403,6 +1404,7 @@ def cmd_key(spec: str, hold_ms: int = 0, dry_run: bool = False) -> dict:
         if dry_run:
             return {"ok": True, "dry_run": True, "press": events,
                     "hold_ms": hold_ms, "release": [f"{code}:0" for code in reversed(codes)]}
+        check_pause()
         ydotool(["key", *events])
         time.sleep(hold_ms / 1000.0)
         ydotool(["key", *[f"{code}:0" for code in reversed(codes)]])
@@ -1410,6 +1412,7 @@ def cmd_key(spec: str, hold_ms: int = 0, dry_run: bool = False) -> dict:
     events += [f"{code}:0" for code in reversed(codes)]
     if dry_run:
         return {"ok": True, "dry_run": True, "key": events}
+    check_pause()
     ydotool(["key", *events])
     return {"ok": True, "keys": spec}
 
@@ -1420,6 +1423,7 @@ def cmd_type(text: str, dry_run: bool = False) -> dict:
     args = ["type", "--", text] if text.startswith("-") else ["type", text]
     if dry_run:
         return {"ok": True, "dry_run": True, "ydotool": args}
+    check_pause()
     ydotool(args, timeout=30)
     return {"ok": True, "typed": text}
 
@@ -1427,6 +1431,7 @@ def cmd_type(text: str, dry_run: bool = False) -> dict:
 def cmd_scroll(amount: int, horizontal: bool = False) -> dict:
     check_gate()
     x, y = (amount, 0) if horizontal else (0, amount)
+    check_pause()
     ydotool(["mousemove", "--wheel", "-x", str(x), "-y", str(y)])
     return {"ok": True, "scroll": amount, "axis": "horizontal" if horizontal else "vertical"}
 
