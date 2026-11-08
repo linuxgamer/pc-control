@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.3
+
+- Fixed 1.25× coordinate bug: ydotool absolute input is logical, but native
+  screenshot targets were passed unchanged. Clicks near the bottom/right edge
+  clamped and landed 25% off.
+- `move` now maps shot → native → logical; `cursor` reports logical, native, and
+  shot coordinates; `move` exposes `target_native`/`cursor_native`.
+- Added coordinate regression tests (55 total).
+
 ## 0.8.2
 
 - Docs are agent-first again; human screenshots are delegated to Spectacle.

@@ -162,7 +162,7 @@ agent ── shell ──► pc-control ──► spectacle / grim / gnome-scree
   apps and games receive mouse/keyboard, including relative look.
 - **Token-aware screenshots** — 1280 px JPEG by default, `--region`, `--ocr`,
   `--grid`, `--full`.
-- **Automatic coordinate mapping** — image pixels map back to native pixels.
+- **Automatic coordinate mapping** — image pixels map to native and then to the compositor's logical input.
 - **Closed-loop movement** — reads the KWin cursor and lands within ~2 px.
 - **Window focus** — unminimizes and activates by title/class without clicking a
   title bar.

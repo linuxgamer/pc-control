@@ -75,16 +75,16 @@ Response fields:
 | Call | Fields |
 |---|---|
 | `shot` | `path`, `width`, `height`, `native_width`, `native_height`, `scale_x`, `scale_y`, `offset_x`, `offset_y`, `mappable`, `ocr`, `ocr_lang`, `ocr_error` |
-| `move` | `screenshot_xy` (input), `target` (native), `cursor` (actual), `error`, `attempts` |
-| `cursor` | `native`, `shot`, `scale`, `offset` (no `error`; it has no target) |
+| `move` | `screenshot_xy` (input), `target` (logical), `target_native`, `cursor` (logical), `cursor_native`, `error`, `attempts` |
+| `cursor` | `logical`, `native`, `shot`, `scale`, `offset`, `display_scale` (no `error`; it has no target) |
 
 ## Coordinate rule
 
 Never scale manually. `move` / `click --at` read the last shot's
-`scale_x`, `scale_y`, `offset_x`, `offset_y` and convert. Do not confuse these
-with the display scale from `doctor` (logical vs native); that one only matters
-for `--scaled` window decorations. If the last shot was
-`--window`, either take a full shot or pass `--native`.
+`scale_x`, `scale_y`, `offset_x`, `offset_y`, map to native pixels, then convert
+native → logical for the compositor. `--scaled` instead takes logical (window
+decoration) coordinates. If the last shot was `--window`, either take a full shot
+or pass `--native`.
 
 ## Human control
 

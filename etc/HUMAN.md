@@ -34,7 +34,7 @@ submitted yet.
 ```bash
 pipx install .
 # or, after a release:
-pipx install https://github.com/linuxgamer/pc-control/releases/download/v0.8.2/pc_control-0.8.2-py3-none-any.whl
+pipx install https://github.com/linuxgamer/pc-control/releases/download/v0.8.3/pc_control-0.8.3-py3-none-any.whl
 ```
 
 This gives you the `pc-control` command, but not the root services.

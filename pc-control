@@ -8,7 +8,7 @@ like a physical device.
 Every command prints exactly one compact JSON object on stdout and exits 0 on
 success or 1 on failure. Screenshot coordinates are accepted in the pixel space
 of the most recent screenshot (which may be downscaled); the helper maps them
-back to native pixels automatically.
+to native pixels and then to the compositor's logical input automatically.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-VERSION = "0.8.2"
+VERSION = "0.8.3"
 APP = "pc-control"
 DEFAULT_MAX_WIDTH = 1280
 JPEG_QUALITY = 72
@@ -1129,12 +1129,22 @@ def cmd_move(x: float, y: float, native: bool = False, scaled: bool = False,
              dry_run: bool = False) -> dict:
     if not dry_run:
         check_gate()
-    nx, ny = map_shot_point(x, y, native)
+    if scaled and native:
+        raise PcError("--native and --scaled are mutually exclusive")
+    info = display_info()
+    display_scale = float(info.get("scale") or 1.0)
     if scaled:
-        info = display_info()
-        nx, ny = nx / (info["scale"] or 1.0), ny / (info["scale"] or 1.0)
-    tx, ty = round(nx), round(ny)
-    base = {"screenshot_xy": [x, y], "target": [tx, ty]}
+        # Window decorations are addressed in logical pixels.
+        lx, ly = float(x), float(y)
+        nx, ny = lx * display_scale, ly * display_scale
+    else:
+        nx, ny = map_shot_point(x, y, native)
+        # ydotool/y input is logical; screenshots are native.
+        lx, ly = nx / display_scale, ny / display_scale
+    tx, ty = round(lx), round(ly)
+    base = {"screenshot_xy": [x, y], "target": [tx, ty],
+            "target_native": [round(nx), round(ny)],
+            "display_scale": display_scale}
     if dry_run:
         return {"ok": True, "dry_run": True, **base}
 
@@ -1169,25 +1179,29 @@ def cmd_move(x: float, y: float, native: bool = False, scaled: bool = False,
             gx = max(0.3, min(3.0, (cx - px) / sx))
         if abs(sy) >= 20:
             gy = max(0.3, min(3.0, (cy - py) / sy))
-    result = {"ok": True, **base, "cursor": [cx, cy], "error": [cx - tx, cy - ty],
-              "attempts": attempts}
+    result = {"ok": True, **base, "cursor": [cx, cy],
+              "cursor_native": [round(cx * display_scale), round(cy * display_scale)],
+              "error": [cx - tx, cy - ty], "attempts": attempts}
     if abs(cx - tx) > 2 or abs(cy - ty) > 2:
         result["warning"] = "did not converge; verify with a fresh shot"
     return result
 
 
 def cmd_cursor() -> dict:
-    cx, cy = cursor_pos()
+    cx, cy = cursor_pos()  # KWin reports logical coordinates
+    display_scale = float(display_info().get("scale") or 1.0)
+    native = [round(cx * display_scale), round(cy * display_scale)]
     meta = read_last_shot()
     if meta and meta.get("mappable", True):
         sx = float(meta.get("scale_x") or 1.0)
         sy = float(meta.get("scale_y") or 1.0)
         ox = float(meta.get("offset_x") or 0)
         oy = float(meta.get("offset_y") or 0)
-        shot = [round((cx - ox) / sx), round((cy - oy) / sy)]
-        return {"ok": True, "native": [cx, cy], "shot": shot,
-                "scale": [sx, sy], "offset": [ox, oy]}
-    return {"ok": True, "native": [cx, cy], "shot": [cx, cy]}
+        shot = [round((native[0] - ox) / sx), round((native[1] - oy) / sy)]
+        return {"ok": True, "logical": [cx, cy], "native": native, "shot": shot,
+                "scale": [sx, sy], "offset": [ox, oy], "display_scale": display_scale}
+    return {"ok": True, "logical": [cx, cy], "native": native, "shot": None,
+            "scale": None, "offset": None, "display_scale": display_scale}
 
 
 def cmd_move_rel(dx: float, dy: float, dry_run: bool = False) -> dict:

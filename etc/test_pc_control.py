@@ -105,6 +105,34 @@ class MappingTests(TmpState):
     def test_no_shot_is_identity(self):
         self.assertEqual(pc.map_shot_point(12, 34), (12, 34))
 
+    def test_move_converts_native_to_logical(self):
+        self.write_shot()
+        with mock.patch.object(pc, "display_info", return_value={"scale": 1.25}):
+            result = pc.cmd_move(640, 360, dry_run=True)
+        self.assertEqual(result["target_native"], [960, 540])
+        self.assertEqual(result["target"], [768, 432])
+
+    def test_move_native_flag(self):
+        with mock.patch.object(pc, "display_info", return_value={"scale": 1.25}):
+            result = pc.cmd_move(960, 540, native=True, dry_run=True)
+        self.assertEqual(result["target"], [768, 432])
+        self.assertEqual(result["target_native"], [960, 540])
+
+    def test_move_scaled_flag(self):
+        with mock.patch.object(pc, "display_info", return_value={"scale": 1.25}):
+            result = pc.cmd_move(768, 432, scaled=True, dry_run=True)
+        self.assertEqual(result["target"], [768, 432])
+        self.assertEqual(result["target_native"], [960, 540])
+
+    def test_cursor_reports_logical_native_shot(self):
+        self.write_shot()
+        with mock.patch.object(pc, "display_info", return_value={"scale": 1.25}), \
+             mock.patch.object(pc, "cursor_pos", return_value=(768, 432)):
+            result = pc.cmd_cursor()
+        self.assertEqual(result["logical"], [768, 432])
+        self.assertEqual(result["native"], [960, 540])
+        self.assertEqual(result["shot"], [640, 360])
+
     def test_window_shot_refuses(self):
         self.write_shot(mappable=False)
         with self.assertRaises(pc.PcError) as ctx:

@@ -48,13 +48,13 @@ Token strategy:
 
 ## Coordinates
 
-- Pass pixels from the latest screenshot **unchanged**. The helper stores the shot geometry and converts to native pixels.
-- Two unrelated scales exist: **display scale** (`doctor` prints it; e.g. 1.25 logical vs native) applies only to `--scaled` window decorations, while **shot `scale_x`** (e.g. 1.5) is the downscale factor and is applied automatically. Never multiply by either.
+- Pass pixels from the latest screenshot **unchanged**. The helper maps shot pixels → native pixels → the compositor's **logical** input coordinates. Never scale manually.
+- Two scales exist: **shot `scale_x`** (e.g. 1.5) is the downscale factor, and **display scale** (e.g. 1.25) converts native to logical input. The helper applies both.
 - If `mappable` is `false` (window shot), take a full shot or pass `--native`.
-- `cursor` reports both `native` and `shot` coordinates in the latest shot's space.
+- `cursor` reports `logical`, `native`, and `shot` coordinates.
 - `move` is closed-loop (measure → step → re-measure); it lands within ~2 px in ~1–3 s. A `warning` means it did not converge — take a shot and verify before clicking.
 - `move-rel DX DY` is raw relative motion (no mapping); use it for game mouse-look.
-- JSON fields: `move` → `screenshot_xy`, `target`, `cursor`, `error`, `attempts`; `cursor` → `native`, `shot`, `scale`, `offset`; `shot` → `path`, `width`, `height`, `scale_x`, `ocr_lang`; `click --at` → `verified`.
+- JSON fields: `move` → `screenshot_xy`, `target` (logical), `target_native`, `cursor` (logical), `cursor_native`, `error`, `attempts`; `cursor` → `logical`, `native`, `shot`, `scale`, `offset`, `display_scale`; `shot` → `path`, `width`, `height`, `scale_x`, `ocr_lang`; `click --at` → `verified`.
 
 ## Safety
 
