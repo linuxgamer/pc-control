@@ -1,5 +1,8 @@
 # pc-control
 
+[![test](https://github.com/linuxgamer/pc-control/actions/workflows/test.yml/badge.svg)](https://github.com/linuxgamer/pc-control/actions/workflows/test.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 **Let an LLM see and operate your Linux desktop — with tokens in mind.**
 
 `pc-control` is a small, dependency-light CLI that gives an agent screenshots,
