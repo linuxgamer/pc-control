@@ -156,13 +156,19 @@ class ControlTests(TmpState):
         self._ctl = tempfile.TemporaryDirectory()
         self.addCleanup(self._ctl.cleanup)
         self._old_ctl = os.environ.get("PC_CONTROL_DIR")
+        self._old_human_file = os.environ.get("PC_HUMAN_ACTIVITY_FILE")
         os.environ["PC_CONTROL_DIR"] = self._ctl.name
+        os.environ["PC_HUMAN_ACTIVITY_FILE"] = str(Path(self._ctl.name) / "human-activity")
 
     def tearDown(self):
         if self._old_ctl is None:
             os.environ.pop("PC_CONTROL_DIR", None)
         else:
             os.environ["PC_CONTROL_DIR"] = self._old_ctl
+        if self._old_human_file is None:
+            os.environ.pop("PC_HUMAN_ACTIVITY_FILE", None)
+        else:
+            os.environ["PC_HUMAN_ACTIVITY_FILE"] = self._old_human_file
         super().tearDown()
 
     def test_pause_status_resume(self):
@@ -198,7 +204,9 @@ class ClickVerifyTests(TmpState):
         self._ctl = tempfile.TemporaryDirectory()
         self.addCleanup(self._ctl.cleanup)
         self._old_ctl = os.environ.get("PC_CONTROL_DIR")
+        self._old_human_file = os.environ.get("PC_HUMAN_ACTIVITY_FILE")
         os.environ["PC_CONTROL_DIR"] = self._ctl.name
+        os.environ["PC_HUMAN_ACTIVITY_FILE"] = str(Path(self._ctl.name) / "human-activity")
 
     def tearDown(self):
         if self._old_ctl is None:
@@ -224,11 +232,20 @@ class ClickVerifyTests(TmpState):
             self.assertEqual(result["verified"], [101, 99])
             yd.assert_called_once()
 
-    def test_click_proceeds_without_kwin_feedback(self):
+    def test_click_refuses_without_feedback(self):
         with mock.patch.object(pc, "cmd_move", return_value={"ok": True, "target": [100, 100]}), \
-             mock.patch.object(pc, "cursor_pos", side_effect=pc.PcError("KWin scripting not available")), \
+             mock.patch.object(pc, "cursor_pos", side_effect=pc.PcError("kwin_unavailable")), \
              mock.patch.object(pc, "ydotool") as yd:
-            result = pc.cmd_click("left", at=[10, 10])
+            with self.assertRaises(pc.PcError) as ctx:
+                pc.cmd_click("left", at=[10, 10])
+            self.assertEqual(str(ctx.exception), "no_feedback")
+            yd.assert_not_called()
+
+    def test_click_proceeds_with_allow_approximate(self):
+        with mock.patch.object(pc, "cmd_move", return_value={"ok": True, "target": [100, 100]}), \
+             mock.patch.object(pc, "cursor_pos", side_effect=pc.PcError("kwin_unavailable")), \
+             mock.patch.object(pc, "ydotool") as yd:
+            result = pc.cmd_click("left", at=[10, 10], allow_approximate=True)
             self.assertIs(result["verified"], False)
             yd.assert_called_once()
 
@@ -239,7 +256,9 @@ class HumanGateTests(TmpState):
         self._ctl = tempfile.TemporaryDirectory()
         self.addCleanup(self._ctl.cleanup)
         self._old_ctl = os.environ.get("PC_CONTROL_DIR")
+        self._old_human_file = os.environ.get("PC_HUMAN_ACTIVITY_FILE")
         os.environ["PC_CONTROL_DIR"] = self._ctl.name
+        os.environ["PC_HUMAN_ACTIVITY_FILE"] = str(Path(self._ctl.name) / "human-activity")
         os.environ["PC_HUMAN_IDLE_MS"] = "800"
 
     def tearDown(self):
@@ -247,6 +266,10 @@ class HumanGateTests(TmpState):
             os.environ.pop("PC_CONTROL_DIR", None)
         else:
             os.environ["PC_CONTROL_DIR"] = self._old_ctl
+        if self._old_human_file is None:
+            os.environ.pop("PC_HUMAN_ACTIVITY_FILE", None)
+        else:
+            os.environ["PC_HUMAN_ACTIVITY_FILE"] = self._old_human_file
         super().tearDown()
 
     def stamp(self, seconds_ago: float):
@@ -315,6 +338,65 @@ class LeaseTests(TmpState):
             pc.cmd_move(10, 10)
         lease = pc.read_lease()
         self.assertEqual(lease["owner"], "agent-a")
+
+
+class LeaseValidityTests(TmpState):
+    def setUp(self):
+        super().setUp()
+        self._old_agent = os.environ.get("PC_AGENT_ID")
+        os.environ["PC_AGENT_ID"] = "agent-a"
+
+    def tearDown(self):
+        if self._old_agent is None:
+            os.environ.pop("PC_AGENT_ID", None)
+        else:
+            os.environ["PC_AGENT_ID"] = self._old_agent
+        super().tearDown()
+
+    def test_expired_lease_is_not_valid(self):
+        pc.lease_path().write_text(json.dumps({
+            "owner": "agent-a", "expires": time.time() - 1, "ttl_ms": 1000,
+        }), encoding="utf-8")
+        lease = pc.cmd_status()["lease"]
+        self.assertTrue(lease["mine"])
+        self.assertFalse(lease["valid"])
+        self.assertTrue(lease["expired"])
+
+    def test_claim_wait_times_out(self):
+        pc.cmd_claim(30)
+        os.environ["PC_AGENT_ID"] = "agent-b"
+        start = time.monotonic()
+        with self.assertRaises(pc.PcError) as ctx:
+            pc.cmd_claim(30, wait=True, timeout=0.4)
+        self.assertEqual(str(ctx.exception), "lease_busy")
+        self.assertGreaterEqual(time.monotonic() - start, 0.35)
+
+
+class StateVisibilityTests(unittest.TestCase):
+    def test_temporary_fallback_is_detected(self):
+        with mock.patch.dict(os.environ, {}, clear=False), \
+             mock.patch.object(pc, "state_dir",
+                              return_value=Path(tempfile.gettempdir()) / "pc-audit"):
+            os.environ.pop("PC_STATE_DIR", None)
+            self.assertTrue(pc.state_is_temporary())
+            with self.assertRaises(pc.PcError) as ctx:
+                pc.require_shared_state()
+            self.assertEqual(str(ctx.exception), "state_temporary")
+
+    def test_explicit_state_is_not_temporary(self):
+        with mock.patch.dict(os.environ, {"PC_STATE_DIR": "/tmp/x"}, clear=False), \
+             mock.patch.object(pc, "state_dir", return_value=Path("/tmp/x")):
+            self.assertFalse(pc.state_is_temporary())
+
+
+class OcrLimitTests(unittest.TestCase):
+    def test_override(self):
+        self.assertEqual(pc.ocr_char_limit(10), 10)
+        self.assertEqual(pc.ocr_char_limit(0), 0)
+
+    def test_env(self):
+        with mock.patch.dict(os.environ, {"PC_OCR_MAX_CHARS": "12"}, clear=False):
+            self.assertEqual(pc.ocr_char_limit(None), 12)
 
 
 class CliTests(unittest.TestCase):

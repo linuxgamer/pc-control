@@ -16,7 +16,8 @@ pc-control doctor
 - `ready: true` → go ahead.
 - `ydotool` / `ydotoold` false → ask the user to run once: `sudo ./install.sh --system` (needs sudo; never run sudo yourself).
 - `screenshot` false → ask the user to install a backend (`spectacle`, `grim`, `gnome-screenshot`, `wayshot`, or `scrot`).
-- `kwin` false → cursor/focus feedback is unavailable; `move` becomes approximate. Basic input still works.
+- `kwin` false → cursor/focus feedback is unavailable; `move` becomes approximate and `click` refuses unless `--allow-approximate`.
+- `state_temporary` → state fell back to `/tmp` (not host-visible); set `PC_STATE_DIR` to a workspace path.
 
 ## Screenshots and tokens (important)
 
@@ -28,6 +29,7 @@ pc-control shot --grid           # same size + 100 px grid, labels in image px
 pc-control shot --region X Y W H # crop a native-pixel region (great for detail)
 pc-control shot --window         # active window only — reading only, not clickable
 pc-control shot --ocr            # add OCR text to JSON; no need to read the image
+pc-control shot --ocr --ocr-max-chars 2000  # cap OCR text (default 4000)
 pc-control shot --full           # native PNG when quality matters
 pc-control shot --out path.jpg
 ```
@@ -72,6 +74,8 @@ pc-control resume                            # human only
   (`shot`, `cursor`, `active`, `screen`, `doctor`, `status`) still work.
 - `click --at` re-reads the cursor immediately before pressing. If it moved
   more than 3 px, it returns `error:"human_override"` and does **not** click.
+  Without KWin feedback it returns `error:"no_feedback"` unless
+  `--allow-approximate` is passed.
 - On `human_paused` or `human_override`: stop immediately, do not retry, tell
   the human, and wait for an explicit `resume`.
 - Do not run `pause`/`resume` yourself; the human owns that channel.
@@ -82,8 +86,9 @@ pc-control resume                            # human only
   never key contents.
 - Pause and `human_active` are global. A **lease** coordinates agents: mutating
   calls auto-acquire a 15 s lease (`PC_LEASE_TTL_MS`), and a second owner gets
-  `error:"lease_busy"`. Use `claim --ttl 60` for a long task, `renew`, and
-  `release` when done. The lease lives in the shared state dir (`PC_STATE_DIR`).
+  `error:"lease_busy"`. Use `claim --ttl 60 --wait` for a long task, `renew`,
+  and `release` when done. `status` reports `lease.valid`/`expired`; an expired
+  lease is not ownership. The lease lives in the shared state dir (`PC_STATE_DIR`).
 
 ## The loop
 
@@ -135,11 +140,12 @@ pc-control key enter
 ## Commands
 
 ```text
-doctor | screen | shot [--window|--screen] [--region X Y W H] [--grid] [--ocr]
+doctor | screen | shot [--window|--screen] [--region X Y W H] [--grid] [--ocr] [--ocr-max-chars N]
        | [--full] [--max-width N] [--out PATH]
 move X Y [--native] [--scaled] [--dry-run]
 move-rel DX DY [--dry-run]
-click [left|right|middle|side|extra] [--double] [--at X Y] [--native] [--dry-run]
+click [left|right|middle|side|extra] [--double] [--at X Y] [--native]
+      [--allow-approximate] [--dry-run]
 down|up [button]
 key KEYS [--hold MS] [--dry-run]      # ctrl+s, space, alt+F4, f1...
 type TEXT                             # US layout / ASCII
@@ -148,7 +154,8 @@ wait MS
 run JSON [--continue-on-error]
 active | cursor | focus PATTERN
 pause [--reason TEXT] | resume | status
-claim [--ttl SECONDS] [--force] | renew [--ttl SECONDS] | release [--force]
+claim [--ttl SECONDS] [--force] [--wait] [--timeout SECONDS]
+renew [--ttl SECONDS] | release [--force]
 ```
 
 ## Failure handling

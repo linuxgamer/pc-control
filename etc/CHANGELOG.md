@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0
+
+- Clicks without KWin cursor feedback now refuse with `no_feedback` unless
+  `--allow-approximate` is explicitly passed.
+- Temporary `/tmp` state now fails loudly (`state_temporary`); `doctor` marks it.
+- Lease `status` exposes `valid`/`expired`; `claim --wait` queues for the lease.
+- OCR is capped (`PC_OCR_MAX_CHARS`, default 4000) with `ocr_chars`/
+  `ocr_truncated`.
+- `run` holds a lease and renews it around `wait`.
+- `doctor` checks a running KWin session and reports watcher input age.
+- `install.sh --socket` is honored through `/etc/pc-control/socket`.
+- 43 unit tests.
+
 ## 0.6.1
 
 - `install.sh --system` now installs `pc-control` to `/usr/local/bin` and the

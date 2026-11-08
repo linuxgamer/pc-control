@@ -118,6 +118,7 @@ if ! command -v systemctl >/dev/null 2>&1; then
 fi
 
 CLI_DEST=/usr/local/bin/pc-control
+SOCKET_CONF=/etc/pc-control/socket
 YDOTOOLD_UNIT=/etc/systemd/system/ydotoold.service
 WATCH_UNIT=/etc/systemd/system/pc-control-humanwatch.service
 WATCH_LIB=/usr/local/lib/pc-control
@@ -129,7 +130,8 @@ if [[ ${UNINSTALL} -eq 1 ]]; then
   systemctl disable --now ydotoold.service 2>/dev/null || true
   rm -f "${WATCH_UNIT}" "${YDOTOOLD_UNIT}" "${WATCH_LIB}/humanwatch.py" "${RULE}" "${MODULE_CONF}"
   rmdir "${WATCH_LIB}" 2>/dev/null || true
-  rm -f "${CLI_DEST}"
+  rm -f "${CLI_DEST}" "${SOCKET_CONF}"
+  rmdir /etc/pc-control 2>/dev/null || true
   UNINSTALL_UID="${TARGET_UID:-}"
   if [[ -z "${UNINSTALL_UID}" && -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
     UNINSTALL_UID="$(id -u "${SUDO_USER}")"
@@ -166,6 +168,9 @@ if [[ ${CLI_SYSTEM} -eq 1 ]]; then
   echo "==> ${CLI_DEST}"
   install -Dm755 "${HERE}/pc-control" "${CLI_DEST}"
 fi
+install -d /etc/pc-control
+printf '%s\n' "${SOCKET}" > "${SOCKET_CONF}"
+chmod 644 "${SOCKET_CONF}"
 if [[ ${INSTALL_SKILL} -eq 1 ]]; then
   if [[ -n "${TARGET_HOME}" ]]; then
     install -Dm644 "${HERE}/etc/SKILL.md" "${TARGET_HOME}/.dsh/skills/pc-control/SKILL.md"

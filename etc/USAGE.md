@@ -37,8 +37,10 @@ from the agent.
 | Read an app window | `shot --window` | Smaller, but **not clickable** |
 | Native quality | `shot --full` | 1920×1080 PNG, more tokens |
 
-The default is already compact (max width 1280, JPEG q72). Do not upscale or
-re-encode the returned image; pass its pixels directly.
+The default is already compact (max width 1280, JPEG q72). OCR is capped at
+`PC_OCR_MAX_CHARS` (default 4000; `0` disables) and reports `ocr_chars` /
+`ocr_truncated`. Do not upscale or re-encode the returned image; pass its pixels
+directly.
 
 ## JSON contract
 
@@ -98,9 +100,9 @@ mutating calls return `error:"human_paused"`; read-only calls still work. The
 agent must stop and ask, never retry or resume on its own.
 
 `click --at` re-reads the cursor right before pressing. If it moved more than
-3 px, the click is cancelled with `error:"human_override"` and the result omits
-`verified`; otherwise `verified` holds the checked cursor position. Without KWin
-feedback `verified` is `false` (the click proceeds).
+3 px, the click is cancelled with `error:"human_override"`. Without KWin feedback
+the click is refused with `error:"no_feedback"` unless `--allow-approximate` is
+passed; then `verified` is `false`.
 
 The system install includes a humanwatch service; physical
 input is detected through evdev. Mutating calls then fail with
@@ -109,14 +111,15 @@ input is detected through evdev. Mutating calls then fail with
 writes only a timestamp to `/run/pc-control/human-UID` — never key codes or
 text.
 
-Error codes: `human_paused`, `human_override`, `human_active`.
+Error codes: `human_paused`, `human_override`, `human_active`, `lease_busy`,
+`state_temporary`, `no_feedback`.
 
 ### Concurrency
 
 Pause and `human_active` are global. For two automation clients, use the lease:
 
 ```bash
-pc-control claim --ttl 60     # owner, expiry, heartbeat via renew
+pc-control claim --ttl 60 --wait   # owner, expiry, heartbeat via renew
 pc-control status             # {"lease": {...}}
 pc-control renew --ttl 60
 pc-control release
@@ -124,7 +127,9 @@ pc-control release
 
 Every mutating call automatically takes/renews a 15 s lease
 (`PC_LEASE_TTL_MS`). A second owner gets `error:"lease_busy"` until the holder
-releases or the lease expires. `--force` steals it. Identity comes from
+releases or the lease expires; `claim --wait` queues instead of failing.
+`status` exposes `lease.valid`/`lease.expired` so an expired lease is never
+mistaken for ownership. `--force` steals it. Identity comes from
 `PC_AGENT_ID`, then `DSH_SESSION_ID`, then the parent PID; the lease file lives
 in the shared `PC_STATE_DIR`.
 

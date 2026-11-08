@@ -28,7 +28,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-VERSION = "0.6.1"
+VERSION = "0.7.0"
 APP = "pc-control"
 DEFAULT_MAX_WIDTH = 1280
 JPEG_QUALITY = 72
@@ -60,6 +60,8 @@ KEYMAP = {
 }
 
 # ydotool click codes and evdev BTN_* codes for press/release.
+MUTATING_ACTIONS = {"move", "move-rel", "click", "down", "up", "key", "type", "scroll", "focus"}
+
 BUTTONS = {
     "left": (0xC0, 0x110),
     "right": (0xC1, 0x111),
@@ -134,6 +136,28 @@ def state_dir() -> Path:
             _STATE = candidate
             return candidate
     raise PcError("no writable state directory", "Set PC_STATE_DIR to a writable path.")
+
+
+def state_is_temporary() -> bool:
+    """True when state fell back to /tmp without an explicit PC_STATE_DIR."""
+    if os.environ.get("PC_STATE_DIR"):
+        return False
+    try:
+        root = Path(tempfile.gettempdir()).resolve()
+        path = state_dir().resolve()
+        return path == root or root in path.parents
+    except OSError:
+        return False
+
+
+def require_shared_state() -> None:
+    if state_is_temporary():
+        raise PcError(
+            "state_temporary",
+            f"state fell back to {state_dir()}, which is not host-visible in this "
+            "sandbox; set PC_STATE_DIR to a workspace path (for example "
+            "$PWD/.pc-control) or run from a writable workspace",
+        )
 
 
 def shots_dir() -> Path:
@@ -249,6 +273,9 @@ def human_threshold_ms() -> int:
 
 
 def human_activity_paths() -> list[Path]:
+    override = os.environ.get("PC_HUMAN_ACTIVITY_FILE")
+    if override:
+        return [Path(override).expanduser()]
     uid = os.getuid()
     paths = [base / "human-activity" for base in control_candidates()]
     paths.append(Path("/run/pc-control") / f"human-{uid}")
@@ -346,16 +373,21 @@ def write_lease(data: dict) -> None:
 
 def lease_info(lease: dict) -> dict:
     now = time.time()
+    expires = float(lease.get("expires") or 0)
+    valid = expires > now
     return {
         "owner": lease.get("owner"),
         "mine": lease.get("owner") == agent_id(),
-        "expires_in_ms": max(0, round((float(lease.get("expires") or 0) - now) * 1000)),
+        "valid": valid,
+        "expired": not valid,
+        "expires_in_ms": max(0, round((expires - now) * 1000)),
         "ttl_ms": lease.get("ttl_ms"),
         "pid": lease.get("pid"),
     }
 
 
 def claim_lease(owner: str, ttl_ms: int, force: bool = False) -> dict:
+    require_shared_state()
     now = time.time()
     with lease_lock():
         current = read_lease()
@@ -396,9 +428,18 @@ def release_lease(owner: str, force: bool = False) -> bool:
         return True
 
 
-def cmd_claim(ttl_seconds: float = 60.0, force: bool = False) -> dict:
-    lease = claim_lease(agent_id(), max(1000, int(ttl_seconds * 1000)), force)
-    return {"ok": True, "lease": lease_info(lease)}
+def cmd_claim(ttl_seconds: float = 60.0, force: bool = False,
+              wait: bool = False, timeout: float = 30.0) -> dict:
+    ttl_ms = max(1000, int(ttl_seconds * 1000))
+    deadline = time.monotonic() + max(0.0, timeout)
+    while True:
+        try:
+            lease = claim_lease(agent_id(), ttl_ms, force)
+            return {"ok": True, "lease": lease_info(lease)}
+        except PcError as exc:
+            if str(exc) != "lease_busy" or not wait or time.monotonic() >= deadline:
+                raise
+            time.sleep(0.25)
 
 
 def cmd_renew(ttl_seconds: float | None = None) -> dict:
@@ -453,6 +494,8 @@ def cmd_status() -> dict:
         "human_active": idle is not None and idle < threshold,
         "human_idle_ms": None if idle is None else round(idle),
         "human_threshold_ms": threshold,
+        "state_temporary": state_is_temporary(),
+        "state": str(state_dir()),
         "lease": lease_info(lease) if lease else None,
     }
     if meta:
@@ -625,6 +668,17 @@ def _resolve_ocr_lang(code: str | None, available: list[str]) -> str | None:
     return None
 
 
+def ocr_char_limit(override: int | None = None) -> int:
+    if override is not None:
+        value = override
+    else:
+        try:
+            value = int(os.environ.get("PC_OCR_MAX_CHARS", "4000"))
+        except ValueError:
+            value = 4000
+    return max(0, value)
+
+
 def pick_ocr_lang(requested: str | None) -> str:
     available = ocr_languages()
     if not available:
@@ -672,7 +726,9 @@ def add_grid(image, draw, step: int = 100) -> None:
 
 def screenshot(kind: str = "full", out: str | None = None, region: list[int] | None = None,
                max_width: int | None = None, full: bool = False, grid: bool = False,
-               ocr: bool = False, lang: str | None = None) -> dict:
+               ocr: bool = False, lang: str | None = None,
+               ocr_max_chars: int | None = None) -> dict:
+    require_shared_state()
     state = state_dir()
     shots_dir()
     raw = shots_dir() / f".raw-{int(time.time())}-{random.randrange(0xFFFF):04x}.png"
@@ -707,6 +763,15 @@ def screenshot(kind: str = "full", out: str | None = None, region: list[int] | N
                 ocr_error = str(exc)
                 if exc.hint:
                     ocr_error = f"{ocr_error} — {exc.hint}"
+
+        ocr_chars = None
+        ocr_truncated = False
+        if text is not None:
+            ocr_chars = len(text)
+            limit = ocr_char_limit(ocr_max_chars)
+            if limit and ocr_chars > limit:
+                text = text[:limit]
+                ocr_truncated = True
 
         target_w = work_w if full else min(work_w, max_width or DEFAULT_MAX_WIDTH)
         scale = work_w / target_w
@@ -760,6 +825,9 @@ def screenshot(kind: str = "full", out: str | None = None, region: list[int] | N
             meta["ocr"] = text
         if ocr_lang is not None:
             meta["ocr_lang"] = ocr_lang
+        if ocr_chars is not None:
+            meta["ocr_chars"] = ocr_chars
+            meta["ocr_truncated"] = ocr_truncated
         if ocr_error is not None:
             meta["ocr_error"] = ocr_error
         write_last_shot(meta)
@@ -774,8 +842,22 @@ def screenshot(kind: str = "full", out: str | None = None, region: list[int] | N
 # KWin scripting: cursor position, active window, focus
 # --------------------------------------------------------------------------- #
 
+_KWIN_RUNNING: bool | None = None
+
+
+def kwin_running() -> bool:
+    global _KWIN_RUNNING
+    if _KWIN_RUNNING is not None:
+        return _KWIN_RUNNING
+    if not which("qdbus6"):
+        _KWIN_RUNNING = False
+        return False
+    _KWIN_RUNNING = run(["qdbus6", "org.kde.KWin", "/KWin"], timeout=3).returncode == 0
+    return _KWIN_RUNNING
+
+
 def kwin_available() -> bool:
-    return bool(which("qdbus6") and which("journalctl"))
+    return bool(which("journalctl")) and kwin_running()
 
 
 def kwin_call(method: str, *args: str) -> str:
@@ -787,8 +869,9 @@ def kwin_call(method: str, *args: str) -> str:
 
 
 def kwin_script(body: str, marker: str, timeout: float = 2.0) -> str:
+    require_shared_state()
     if not kwin_available():
-        raise PcError("KWin scripting not available", "This feature needs KDE Plasma with qdbus6.")
+        raise PcError("kwin_unavailable", "This feature needs a running KDE Plasma session.")
     nonce = f"{os.getpid()}-{time.time_ns()}"
     name = f"pc-{marker.lower()}-{nonce}"
     folder = state_dir() / "kwin"
@@ -864,6 +947,12 @@ def socket_path() -> str:
     configured = os.environ.get("YDOTOOL_SOCKET")
     if configured:
         return configured
+    try:
+        stored = Path("/etc/pc-control/socket").read_text(encoding="utf-8").strip()
+        if stored:
+            return stored
+    except OSError:
+        pass
     runtime = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
     for candidate in ("/run/ydotool.sock", f"{runtime}/.ydotool_socket"):
         if os.path.exists(candidate):
@@ -921,7 +1010,9 @@ def cmd_move(x: float, y: float, native: bool = False, scaled: bool = False,
 
     try:
         cx, cy = cursor_pos()
-    except PcError:
+    except PcError as exc:
+        if str(exc) == "state_temporary":
+            raise
         ydotool(["mousemove", "--absolute", "-x", str(tx), "-y", str(ty)])
         return {"ok": True, **base, "feedback": False, "note": "KWin unavailable; move is approximate"}
 
@@ -980,11 +1071,24 @@ def cmd_move_rel(dx: float, dy: float, dry_run: bool = False) -> dict:
 
 
 def cmd_click(button: str, double: bool = False, at: list[float] | None = None,
-              native: bool = False, dry_run: bool = False) -> dict:
-    if not dry_run:
-        check_gate()
+              native: bool = False, dry_run: bool = False,
+              allow_approximate: bool = False) -> dict:
     if button not in BUTTONS:
         raise PcError(f"unknown button {button!r}", "left, right, middle, side, extra")
+    if not dry_run:
+        check_gate()
+        if at is None:
+            try:
+                cursor_pos()
+            except PcError as exc:
+                if str(exc) == "state_temporary":
+                    raise
+                if not allow_approximate:
+                    raise PcError(
+                        "no_feedback",
+                        "KWin cursor feedback is unavailable; pass --allow-approximate "
+                        "to click without verifying the pointer",
+                    )
     moved = None
     verified = None
     if at:
@@ -1001,9 +1105,15 @@ def cmd_click(button: str, double: bool = False, at: list[float] | None = None,
                             f"cursor moved to ({cx},{cy}) before click (target {target}); click cancelled",
                         )
                 except PcError as exc:
-                    if str(exc) == "human_override":
+                    if str(exc) in ("human_override", "state_temporary"):
                         raise
-                    verified = False  # no KWin feedback; proceed carefully
+                    if not allow_approximate:
+                        raise PcError(
+                            "no_feedback",
+                            "KWin cursor feedback is unavailable; pass --allow-approximate "
+                            "to click without verifying the pointer",
+                        ) from exc
+                    verified = False
             time.sleep(0.03)
             check_gate()
     args = ["click"]
@@ -1109,12 +1219,16 @@ def cmd_doctor() -> dict:
     add("ydotoold", os.path.exists(sock), sock)
     add("uinput", os.path.exists("/sys/class/misc/uinput"),
         "loaded" if os.path.exists("/sys/class/misc/uinput") else "uinput module not loaded")
-    add("kwin", kwin_available(), "qdbus6 + journalctl (cursor/focus feedback)", required=False)
+    add("kwin", kwin_available(),
+        "running KWin + journalctl" if kwin_available() else "no running KDE session",
+        required=False)
     add("pillow", _has_pillow(), "compact/grid/region shots")
     langs = ocr_languages()
     add("tesseract", bool(which("tesseract")),
         f"languages: {', '.join(langs) if langs else 'none'}", required=False)
-    add("state", _writable(state_dir()), str(state_dir()))
+    temporary = state_is_temporary()
+    add("state", not temporary,
+        str(state_dir()) + (" (temporary fallback; set PC_STATE_DIR)" if temporary else ""))
     watch_state = ""
     if which("systemctl"):
         watch_state = run(["systemctl", "is-active", "pc-control-humanwatch"],
@@ -1124,7 +1238,11 @@ def cmd_doctor() -> dict:
     watch_detail = (f"service {watch_state}" if watch_state
                     else "not detected (run: sudo ./install.sh --system)")
     if watch_file.exists():
-        watch_detail += "; timestamp file present"
+        try:
+            age = max(0, round(time.time() - float(watch_file.read_text(encoding="utf-8").split()[0])))
+            watch_detail += f"; last input {age}s ago"
+        except (OSError, ValueError, IndexError):
+            watch_detail += "; timestamp file present"
     add("humanwatch", watch_active, watch_detail, required=False)
     add("sandbox", True,
         "expected under an agent sandbox: /dev/uinput hidden; ydotool uses the host daemon",
@@ -1158,6 +1276,7 @@ def dispatch(action: dict) -> dict:
             bool(action.get("grid", False)),
             bool(action.get("ocr", False)),
             action.get("ocr_lang"),
+            action.get("ocr_max_chars"),
         )
     if name == "move":
         return cmd_move(float(action["x"]), float(action["y"]),
@@ -1166,7 +1285,8 @@ def dispatch(action: dict) -> dict:
         return cmd_move_rel(float(action.get("dx", 0)), float(action.get("dy", 0)))
     if name == "click":
         return cmd_click(action.get("button", "left"), bool(action.get("double", False)),
-                         action.get("at"), bool(action.get("native", False)))
+                         action.get("at"), bool(action.get("native", False)),
+                         allow_approximate=bool(action.get("allow_approximate", False)))
     if name == "down":
         return cmd_button(action.get("button", "left"), True)
     if name == "up":
@@ -1205,12 +1325,21 @@ def cmd_run(spec: str, continue_on_error: bool = False) -> dict:
         raise PcError("run expects a JSON array of actions")
     if len(actions) > 60:
         raise PcError("too many actions in one run (max 60)")
+    mutating = any(isinstance(a, dict) and a.get("action") in MUTATING_ACTIONS for a in actions)
+    held = False
+    if mutating:
+        ensure_lease()
+        held = True
     results = []
     for index, action in enumerate(actions):
         if not isinstance(action, dict):
             raise PcError(f"action {index} is not an object")
         try:
+            if held and action.get("action") == "wait":
+                ensure_lease()
             results.append(dispatch(action))
+            if held and action.get("action") == "wait":
+                ensure_lease()
         except PcError as exc:
             results.append({"ok": False, "action": action.get("action"), "index": index,
                             "error": str(exc), "hint": exc.hint})
@@ -1233,6 +1362,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("claim")
     p.add_argument("--ttl", type=float, default=60.0, metavar="SECONDS")
     p.add_argument("--force", action="store_true")
+    p.add_argument("--wait", action="store_true")
+    p.add_argument("--timeout", type=float, default=30.0, metavar="SECONDS")
     p = sub.add_parser("renew")
     p.add_argument("--ttl", type=float, default=None, metavar="SECONDS")
     p = sub.add_parser("release")
@@ -1248,6 +1379,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--grid", action="store_true")
     p.add_argument("--ocr", action="store_true")
     p.add_argument("--ocr-lang", default=None)
+    p.add_argument("--ocr-max-chars", type=int, default=None)
 
     p = sub.add_parser("move")
     p.add_argument("x", type=float)
@@ -1266,6 +1398,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--double", action="store_true")
     p.add_argument("--at", nargs=2, type=float, metavar=("X", "Y"))
     p.add_argument("--native", action="store_true")
+    p.add_argument("--allow-approximate", action="store_true")
     p.add_argument("--dry-run", action="store_true")
 
     p = sub.add_parser("down")
@@ -1314,7 +1447,7 @@ def main(argv: list[str]) -> None:
         if args.command == "status":
             emit(cmd_status())
         if args.command == "claim":
-            emit(cmd_claim(args.ttl, args.force))
+            emit(cmd_claim(args.ttl, args.force, args.wait, args.timeout))
         if args.command == "renew":
             emit(cmd_renew(args.ttl))
         if args.command == "release":
@@ -1322,13 +1455,14 @@ def main(argv: list[str]) -> None:
         if args.command == "shot":
             kind = "window" if args.window else "screen" if args.screen else "full"
             emit(screenshot(kind, args.out, args.region, args.max_width, args.full,
-                            args.grid, args.ocr, args.ocr_lang))
+                            args.grid, args.ocr, args.ocr_lang, args.ocr_max_chars))
         if args.command == "move":
             emit(cmd_move(args.x, args.y, args.native, args.scaled, args.dry_run))
         if args.command == "move-rel":
             emit(cmd_move_rel(args.dx, args.dy, args.dry_run))
         if args.command == "click":
-            emit(cmd_click(args.button, args.double, args.at, args.native, args.dry_run))
+            emit(cmd_click(args.button, args.double, args.at, args.native,
+                           args.dry_run, args.allow_approximate))
         if args.command == "down":
             emit(cmd_button(args.button, True))
         if args.command == "up":
@@ -1353,6 +1487,11 @@ def main(argv: list[str]) -> None:
         raise PcError(f"unknown command {args.command!r}")
     except PcError as exc:
         emit({"ok": False, "command": args.command, "error": str(exc), "hint": exc.hint}, 1)
+    except Exception as exc:  # noqa: BLE001 - the CLI contract is JSON
+        if os.environ.get("PC_DEBUG") == "1":
+            raise
+        emit({"ok": False, "command": args.command, "error": "internal_error",
+              "hint": f"{type(exc).__name__}: {exc}"[:400]}, 1)
     except KeyboardInterrupt:
         emit({"ok": False, "error": "interrupted"}, 130)
 

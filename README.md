@@ -112,10 +112,11 @@ Read the image at the returned `path` with your agent's image tool, or use
 ```text
 doctor | screen
 shot [--window|--screen] [--region X Y W H] [--grid] [--ocr] [--ocr-lang L]
-     [--full] [--max-width N] [--out PATH]
+     [--ocr-max-chars N] [--full] [--max-width N] [--out PATH]
 move X Y [--native] [--scaled] [--dry-run]
 move-rel DX DY [--dry-run]
-click [left|right|middle|side|extra] [--double] [--at X Y] [--native] [--dry-run]
+click [left|right|middle|side|extra] [--double] [--at X Y] [--native]
+      [--allow-approximate] [--dry-run]
 down|up [button]
 key KEYS [--hold MS] [--dry-run]        # ctrl+s, space, alt+F4, f1...
 type TEXT                               # US layout / ASCII
@@ -124,7 +125,8 @@ wait MS
 run JSON [--continue-on-error]
 active | cursor | focus PATTERN
 pause [--reason TEXT] | resume | status
-claim [--ttl SECONDS] [--force] | renew [--ttl SECONDS] | release [--force]
+claim [--ttl SECONDS] [--force] [--wait] [--timeout SECONDS]
+renew [--ttl SECONDS] | release [--force]
 ```
 
 `run` actions: `shot`, `move`, `move-rel`, `click`, `down`, `up`, `key`, `type`,
@@ -164,7 +166,9 @@ live aiming.
 | `error:"human_paused"` | The human paused control; stop and ask them to `pc-control resume`. |
 | `error:"human_override"` | The cursor moved before the click; do not retry blindly — take a fresh shot. |
 | `error:"human_active"` | Physical input was detected; wait for `PC_HUMAN_IDLE_MS` and retry once. |
-| `error:"lease_busy"` | Another agent holds the lease; wait, `release`, or coordinate. |
+| `error:"lease_busy"` | Another agent holds the lease; `claim --wait` or coordinate. |
+| `error:"state_temporary"` | State fell back to `/tmp`; set `PC_STATE_DIR` to a host-visible path. |
+| `error:"no_feedback"` | No KWin cursor feedback; pass `--allow-approximate` only if you accept blind clicking. |
 | OCR text looks wrong | Check `ocr_lang` in the shot JSON; install the matching Tesseract language and pass `--ocr-lang` (e.g. `rus`). Mixed/Cyrillic UI can still transliterate. |
 
 ## Configuration
@@ -176,6 +180,7 @@ live aiming.
 | `PC_OCR_LANG` | from `LANG`, then `eng` | Tesseract language |
 | `PC_HUMAN_IDLE_MS` | `800` | Ignore mutating calls this long after physical input |
 | `PC_LEASE_TTL_MS` | `15000` | Auto-lease lifetime; renewed on every mutating call |
+| `PC_OCR_MAX_CHARS` | `4000` | OCR text cap; `0` disables truncation |
 | `PC_AGENT_ID` | session/parent | Lease owner identity |
 | `PC_LEASE_DISABLED` | unset | `1` bypasses leases (single-agent debugging) |
 | `YDOTOOL_SOCKET` | `/run/ydotool.sock` | Daemon socket |
