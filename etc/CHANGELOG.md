@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0
+
+- Optional `setup-humanwatch.sh` root service: physical mouse/keyboard activity
+  is timestamped (never key contents) and mutating calls yield with
+  `human_active` until `PC_HUMAN_IDLE_MS` (default 800 ms).
+- `status` reports `human_active`/`human_idle_ms`; `doctor` reports the watcher.
+- Documented that pause/human_active do not coordinate two agents; a lease is
+  the next stage.
+- 32 unit tests.
+
 ## 0.4.0
 
 - Human takeover: `pause`/`resume`/`status` use a cwd-independent control file;

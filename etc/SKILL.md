@@ -75,6 +75,13 @@ pc-control resume                            # human only
 - On `human_paused` or `human_override`: stop immediately, do not retry, tell
   the human, and wait for an explicit `resume`.
 - Do not run `pause`/`resume` yourself; the human owns that channel.
+- If `setup-humanwatch.sh` is installed, **physical** mouse/keyboard input
+  within `PC_HUMAN_IDLE_MS` (default 800 ms) also blocks mutating calls with
+  `error:"human_active"`. `status` reports `human_idle_ms`. Wait for idle,
+  retry once; if it keeps happening, ask. The watcher stores only timestamps,
+  never key contents.
+- Pause and `human_active` are global, but they do **not** coordinate two
+  agents. Do not run two pc-control drivers at once until a lease exists.
 
 ## The loop
 

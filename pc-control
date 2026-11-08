@@ -26,7 +26,7 @@ import tempfile
 import time
 from pathlib import Path
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 APP = "pc-control"
 DEFAULT_MAX_WIDTH = 1280
 JPEG_QUALITY = 72
@@ -238,6 +238,65 @@ def check_pause() -> None:
                   f"Paused at {when}{suffix}. Ask the human to run: pc-control resume")
 
 
+def human_threshold_ms() -> int:
+    try:
+        value = int(os.environ.get("PC_HUMAN_IDLE_MS", "800"))
+    except ValueError:
+        value = 800
+    return max(0, value)
+
+
+def human_activity_paths() -> list[Path]:
+    uid = os.getuid()
+    paths = [base / "human-activity" for base in control_candidates()]
+    paths.append(Path("/run/pc-control") / f"human-{uid}")
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{uid}"
+    paths.append(Path(runtime) / "pc-control" / f"human-{uid}")
+    seen: set[str] = set()
+    result: list[Path] = []
+    for path in paths:
+        key = str(path)
+        if key not in seen:
+            seen.add(key)
+            result.append(path)
+    return result
+
+
+def read_human_activity() -> float | None:
+    latest = None
+    for path in human_activity_paths():
+        try:
+            value = float(path.read_text(encoding="utf-8").split()[0])
+        except (OSError, ValueError, IndexError):
+            continue
+        if latest is None or value > latest:
+            latest = value
+    return latest
+
+
+def human_idle_ms() -> float | None:
+    last = read_human_activity()
+    if last is None:
+        return None
+    return max(0.0, (time.time() - last) * 1000.0)
+
+
+def check_human_idle() -> None:
+    idle = human_idle_ms()
+    threshold = human_threshold_ms()
+    if idle is not None and idle < threshold:
+        raise PcError(
+            "human_active",
+            f"physical input {round(idle)}ms ago (threshold {threshold}ms); "
+            "wait for idle and retry",
+        )
+
+
+def check_gate() -> None:
+    check_pause()
+    check_human_idle()
+
+
 def cmd_pause(reason: str | None = None) -> dict:
     existing = read_pause()
     if existing:
@@ -263,9 +322,18 @@ def cmd_resume() -> dict:
 
 def cmd_status() -> dict:
     meta = read_pause()
+    idle = human_idle_ms()
+    threshold = human_threshold_ms()
+    result = {
+        "ok": True,
+        "paused": bool(meta),
+        "human_active": idle is not None and idle < threshold,
+        "human_idle_ms": None if idle is None else round(idle),
+        "human_threshold_ms": threshold,
+    }
     if meta:
-        return {"ok": True, "paused": True, "human_active": False, **meta}
-    return {"ok": True, "paused": False, "human_active": False}
+        result.update(meta)
+    return result
 
 
 
@@ -644,7 +712,7 @@ def cmd_active() -> dict:
 
 
 def cmd_focus(pattern: str) -> dict:
-    check_pause()
+    check_gate()
     body = (
         'var pat = ' + json.dumps(pattern.lower()) + ';\n'
         'var list = (typeof workspace.windowList === "function") ? workspace.windowList() : workspace.clientList();\n'
@@ -717,7 +785,7 @@ def map_shot_point(x: float, y: float, native: bool = False) -> tuple[float, flo
 def cmd_move(x: float, y: float, native: bool = False, scaled: bool = False,
              dry_run: bool = False) -> dict:
     if not dry_run:
-        check_pause()
+        check_gate()
     nx, ny = map_shot_point(x, y, native)
     if scaled:
         info = display_info()
@@ -737,7 +805,7 @@ def cmd_move(x: float, y: float, native: bool = False, scaled: bool = False,
     gx = gy = 1.0
     for attempts in range(1, 26):
         if not dry_run:
-            check_pause()
+            check_gate()
         dx, dy = tx - cx, ty - cy
         if abs(dx) <= 2 and abs(dy) <= 2:
             break
@@ -779,7 +847,7 @@ def cmd_cursor() -> dict:
 
 def cmd_move_rel(dx: float, dy: float, dry_run: bool = False) -> dict:
     if not dry_run:
-        check_pause()
+        check_gate()
     args = ["mousemove", "-x", str(round(dx)), "-y", str(round(dy))]
     if dry_run:
         return {"ok": True, "dry_run": True, "ydotool": args}
@@ -790,7 +858,7 @@ def cmd_move_rel(dx: float, dy: float, dry_run: bool = False) -> dict:
 def cmd_click(button: str, double: bool = False, at: list[float] | None = None,
               native: bool = False, dry_run: bool = False) -> dict:
     if not dry_run:
-        check_pause()
+        check_gate()
     if button not in BUTTONS:
         raise PcError(f"unknown button {button!r}", "left, right, middle, side, extra")
     moved = None
@@ -813,7 +881,7 @@ def cmd_click(button: str, double: bool = False, at: list[float] | None = None,
                         raise
                     verified = False  # no KWin feedback; proceed carefully
             time.sleep(0.03)
-            check_pause()
+            check_gate()
     args = ["click"]
     if double:
         args += ["--repeat", "2", "--next-delay", "80"]
@@ -826,7 +894,7 @@ def cmd_click(button: str, double: bool = False, at: list[float] | None = None,
 
 
 def cmd_button(button: str, pressed: bool) -> dict:
-    check_pause()
+    check_gate()
     if button not in BUTTONS:
         raise PcError(f"unknown button {button!r}", "left, right, middle, side, extra")
     code = BUTTONS[button][1]
@@ -856,7 +924,7 @@ def parse_keys(spec: str) -> list[int]:
 
 def cmd_key(spec: str, hold_ms: int = 0, dry_run: bool = False) -> dict:
     if not dry_run:
-        check_pause()
+        check_gate()
     codes = parse_keys(spec)
     events = [f"{code}:1" for code in codes]
     if hold_ms > 0:
@@ -876,7 +944,7 @@ def cmd_key(spec: str, hold_ms: int = 0, dry_run: bool = False) -> dict:
 
 def cmd_type(text: str, dry_run: bool = False) -> dict:
     if not dry_run:
-        check_pause()
+        check_gate()
     args = ["type", "--", text] if text.startswith("-") else ["type", text]
     if dry_run:
         return {"ok": True, "dry_run": True, "ydotool": args}
@@ -885,7 +953,7 @@ def cmd_type(text: str, dry_run: bool = False) -> dict:
 
 
 def cmd_scroll(amount: int, horizontal: bool = False) -> dict:
-    check_pause()
+    check_gate()
     x, y = (amount, 0) if horizontal else (0, amount)
     ydotool(["mousemove", "--wheel", "-x", str(x), "-y", str(y)])
     return {"ok": True, "scroll": amount, "axis": "horizontal" if horizontal else "vertical"}
@@ -923,6 +991,15 @@ def cmd_doctor() -> dict:
     add("tesseract", bool(which("tesseract")),
         f"languages: {', '.join(langs) if langs else 'none'}", required=False)
     add("state", _writable(state_dir()), str(state_dir()))
+    watch_active = False
+    if which("systemctl"):
+        watch_active = run(["systemctl", "is-active", "pc-control-humanwatch"],
+                           timeout=5).stdout.strip() == "active"
+    watch_file = Path("/run/pc-control") / f"human-{os.getuid()}"
+    watch_detail = "service active" if watch_active else "not installed (optional: setup-humanwatch.sh)"
+    if watch_file.exists():
+        watch_detail += "; timestamp file present"
+    add("humanwatch", watch_active, watch_detail, required=False)
     add("sandbox", True,
         "expected under an agent sandbox: /dev/uinput hidden; ydotool uses the host daemon",
         required=False)

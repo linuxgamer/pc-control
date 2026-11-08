@@ -54,6 +54,7 @@ git clone https://github.com/linuxgamer/pc-control.git
 cd pc-control
 ./install.sh                 # ~/.local/bin/pc-control + ~/.dsh/skills/pc-control
 sudo ./setup-uinput.sh       # once: uinput module, udev rule, ydotoold
+sudo ./setup-humanwatch.sh   # optional: physical input detection
 pc-control doctor
 ```
 
@@ -152,6 +153,7 @@ live aiming.
 | `ydotool failed` | `pc-control doctor`; check `ydotoold` and the socket. |
 | `error:"human_paused"` | The human paused control; stop and ask them to `pc-control resume`. |
 | `error:"human_override"` | The cursor moved before the click; do not retry blindly — take a fresh shot. |
+| `error:"human_active"` | Physical input was detected; wait for `PC_HUMAN_IDLE_MS` and retry once. |
 | OCR text looks wrong | Check `ocr_lang` in the shot JSON; install the matching Tesseract language and pass `--ocr-lang` (e.g. `rus`). Mixed/Cyrillic UI can still transliterate. |
 
 ## Configuration
@@ -161,6 +163,7 @@ live aiming.
 | `PC_STATE_DIR` | `./.pc-control` | Shots, last-shot geometry, KWin helpers |
 | `PC_SCREENSHOT_BACKEND` | auto | `spectacle`, `grim`, `gnome-screenshot`, `wayshot`, `scrot`, `import` |
 | `PC_OCR_LANG` | from `LANG`, then `eng` | Tesseract language |
+| `PC_HUMAN_IDLE_MS` | `800` | Ignore mutating calls this long after physical input |
 | `YDOTOOL_SOCKET` | `/run/ydotool.sock` | Daemon socket |
 
 ## Development
@@ -176,6 +179,8 @@ Layout:
 pc-control       single-file CLI (stdlib; Pillow optional)
 setup-uinput.sh  one-time root setup
 install.sh       user-level installer (CLI + skill)
+setup-humanwatch.sh  optional root service: physical input timestamps
+scripts/humanwatch.py  the evdev watcher
 etc/SKILL.md     skill for any harness
 etc/USAGE.md     generic agent instructions
 ```

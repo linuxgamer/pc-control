@@ -102,7 +102,20 @@ agent must stop and ask, never retry or resume on its own.
 `verified`; otherwise `verified` holds the checked cursor position. Without KWin
 feedback `verified` is `false` (the click proceeds).
 
-Error codes: `human_paused`, `human_override`.
+If the optional `sudo ./setup-humanwatch.sh` service is installed, physical
+input is detected through evdev. Mutating calls then fail with
+`error:"human_active"` while the last physical event is younger than
+`PC_HUMAN_IDLE_MS` (default 800). `status` reports `human_idle_ms`. The watcher
+writes only a timestamp to `/run/pc-control/human-UID` — never key codes or
+text.
+
+Error codes: `human_paused`, `human_override`, `human_active`.
+
+### Concurrency
+
+Pause and `human_active` are global, but they do not arbitrate between two
+automation clients. Two agents can still interleave mouse/keyboard actions.
+Run one pc-control driver at a time until the lease stage lands.
 
 ## Batch format
 

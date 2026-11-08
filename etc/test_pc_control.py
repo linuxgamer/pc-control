@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import tempfile
 import unittest
 from importlib.machinery import SourceFileLoader
@@ -27,7 +28,9 @@ class TmpState(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self._old = os.environ.get("PC_STATE_DIR")
+        self._old_human = os.environ.get("PC_HUMAN_IDLE_MS")
         os.environ["PC_STATE_DIR"] = self._tmp.name
+        os.environ["PC_HUMAN_IDLE_MS"] = "0"
         pc._STATE = None
 
     def tearDown(self):
@@ -35,6 +38,10 @@ class TmpState(unittest.TestCase):
             os.environ.pop("PC_STATE_DIR", None)
         else:
             os.environ["PC_STATE_DIR"] = self._old
+        if self._old_human is None:
+            os.environ.pop("PC_HUMAN_IDLE_MS", None)
+        else:
+            os.environ["PC_HUMAN_IDLE_MS"] = self._old_human
         pc._STATE = None
 
     def write_shot(self, **meta):
@@ -224,6 +231,46 @@ class ClickVerifyTests(TmpState):
             result = pc.cmd_click("left", at=[10, 10])
             self.assertIs(result["verified"], False)
             yd.assert_called_once()
+
+
+class HumanGateTests(TmpState):
+    def setUp(self):
+        super().setUp()
+        self._ctl = tempfile.TemporaryDirectory()
+        self.addCleanup(self._ctl.cleanup)
+        self._old_ctl = os.environ.get("PC_CONTROL_DIR")
+        os.environ["PC_CONTROL_DIR"] = self._ctl.name
+        os.environ["PC_HUMAN_IDLE_MS"] = "800"
+
+    def tearDown(self):
+        if self._old_ctl is None:
+            os.environ.pop("PC_CONTROL_DIR", None)
+        else:
+            os.environ["PC_CONTROL_DIR"] = self._old_ctl
+        super().tearDown()
+
+    def stamp(self, seconds_ago: float):
+        path = Path(self._ctl.name) / "human-activity"
+        path.write_text(f"{time.time() - seconds_ago:.3f}", encoding="utf-8")
+
+    def test_recent_input_blocks(self):
+        self.stamp(0.1)
+        with self.assertRaises(pc.PcError) as ctx:
+            pc.check_human_idle()
+        self.assertEqual(str(ctx.exception), "human_active")
+        self.assertTrue(pc.cmd_status()["human_active"])
+
+    def test_old_input_allows(self):
+        self.stamp(10)
+        pc.check_human_idle()
+        self.assertFalse(pc.cmd_status()["human_active"])
+
+    def test_recent_input_blocks_move(self):
+        self.stamp(0.1)
+        with mock.patch.object(pc, "ydotool") as yd:
+            with self.assertRaises(pc.PcError):
+                pc.cmd_move(10, 10)
+            yd.assert_not_called()
 
 
 class CliTests(unittest.TestCase):
