@@ -106,15 +106,16 @@ agent must stop and ask, never retry or resume on its own.
 the click is refused with `error:"no_feedback"` unless `--allow-approximate` is
 passed; then `verified` is `false`.
 
-The system install includes a humanwatch service; physical
-input is detected through evdev. Mutating calls then fail with
-`error:"human_active"` while the last physical event is younger than
-`PC_HUMAN_IDLE_MS` (default 800). `status` reports `human_idle_ms`. The watcher
-writes only a timestamp to `/run/pc-control/human-UID` — never key codes or
-text.
+The system install includes a humanwatch service. If physical input is younger
+than `PC_HUMAN_IDLE_MS` (default 800), the first mutating call sends a desktop
+notification and waits `PC_TAKEOVER_GRACE_MS` (default 5000) before acting. The
+human can run `pc-control pause` during the countdown to cancel. If the human is
+idle, there is no notification and no delay. `error:"human_active"` only appears
+with `PC_TAKEOVER_GRACE_MS=0`. The watcher writes only a timestamp to
+`/run/pc-control/human-UID` — never key codes or text.
 
-Error codes: `human_paused`, `human_override`, `human_active`, `lease_busy`,
-`state_temporary`, `no_feedback`.
+Error codes: `human_paused`, `human_override`, `human_active` (grace disabled),
+`lease_busy`, `state_temporary`, `no_feedback`.
 
 ### Concurrency
 

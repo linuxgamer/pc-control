@@ -90,6 +90,9 @@ if [[ ${SYSTEM} -eq 0 ]]; then
   command -v tesseract >/dev/null 2>&1 \
     && echo "  tesseract: ok (OCR)" \
     || echo "  tesseract: optional (OCR)"
+  command -v notify-send >/dev/null 2>&1 || command -v kdialog >/dev/null 2>&1 \
+    && echo "  notifications: ok (takeover warning)" \
+    || echo "  notifications: optional (notify-send/kdialog)"
   for backend in spectacle grim gnome-screenshot wayshot scrot import; do
     if command -v "${backend}" >/dev/null 2>&1; then
       echo "  screenshot: ${backend}"

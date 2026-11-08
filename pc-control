@@ -29,7 +29,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-VERSION = "0.8.3"
+VERSION = "0.9.0"
 APP = "pc-control"
 DEFAULT_MAX_WIDTH = 1280
 JPEG_QUALITY = 72
@@ -323,9 +323,61 @@ def check_human_idle() -> None:
         )
 
 
-def check_gate() -> None:
+_TAKEOVER_USED = False
+
+
+def takeover_grace_ms() -> int:
+    try:
+        value = int(os.environ.get("PC_TAKEOVER_GRACE_MS", "5000"))
+    except ValueError:
+        value = 5000
+    return max(0, value)
+
+
+def notify_takeover(grace_ms: int) -> None:
+    if os.environ.get("PC_TAKEOVER_NOTIFY", "1") == "0":
+        return
+    title = "Agent wants to use the desktop"
+    body = (f"pc-control will take over in {grace_ms / 1000:.1f}s. "
+            "Run: pc-control pause")
+    try:
+        if which("notify-send"):
+            run(["notify-send", "--app-name=pc-control", "--urgency=normal",
+                 f"--expire-time={max(1000, grace_ms)}", title, body], timeout=3)
+        elif which("kdialog"):
+            run(["kdialog", "--passivepopup", body,
+                 str(max(1, round(grace_ms / 1000))), "--title", title], timeout=3)
+    except PcError:
+        pass
+
+
+def check_gate(grace: bool = True) -> None:
     check_pause()
-    check_human_idle()
+    global _TAKEOVER_USED
+    if _TAKEOVER_USED:
+        ensure_lease()
+        return
+
+    idle = human_idle_ms()
+    threshold = human_threshold_ms()
+    if idle is not None and idle < threshold:
+        if not grace:
+            check_human_idle()
+        grace_ms = takeover_grace_ms()
+        if grace_ms <= 0:
+            check_human_idle()
+        _TAKEOVER_USED = True
+        notify_takeover(grace_ms)
+        deadline = time.monotonic() + grace_ms / 1000.0
+        while time.monotonic() < deadline:
+            check_pause()
+            current = human_idle_ms()
+            if current is None or current >= threshold:
+                break
+            time.sleep(0.1)
+        check_pause()
+    else:
+        check_human_idle()
     ensure_lease()
 
 
@@ -496,6 +548,7 @@ def cmd_status() -> dict:
         "human_active": idle is not None and idle < threshold,
         "human_idle_ms": None if idle is None else round(idle),
         "human_threshold_ms": threshold,
+        "takeover_grace_ms": takeover_grace_ms(),
         "state_temporary": state_is_temporary(),
         "state": str(state_dir()),
         "lease": lease_info(lease) if lease else None,
@@ -961,7 +1014,7 @@ def print_doctor_human(report: dict) -> None:
             if check.get("required") and not check.get("ok"):
                 print(f'  - {check["name"]}: {check["detail"]}')
         print("  Run: sudo ./install.sh --system")
-    for name in ("screenshot", "ydotoold", "humanwatch", "kwin", "state"):
+    for name in ("screenshot", "ydotoold", "humanwatch", "notify", "kwin", "state"):
         check = next((c for c in report.get("checks", []) if c["name"] == name), None)
         if check:
             print(f'  {name}: {check["detail"]}')
@@ -1160,7 +1213,7 @@ def cmd_move(x: float, y: float, native: bool = False, scaled: bool = False,
     gx = gy = 1.0
     for attempts in range(1, 26):
         if not dry_run:
-            check_gate()
+            check_gate(grace=False)
         dx, dy = tx - cx, ty - cy
         if abs(dx) <= 2 and abs(dy) <= 2:
             break
@@ -1259,7 +1312,7 @@ def cmd_click(button: str, double: bool = False, at: list[float] | None = None,
                         ) from exc
                     verified = False
             time.sleep(0.03)
-            check_gate()
+            check_gate(grace=False)
     args = ["click"]
     if double:
         args += ["--repeat", "2", "--next-delay", "80"]
@@ -1388,6 +1441,8 @@ def cmd_doctor() -> dict:
         except (OSError, ValueError, IndexError):
             watch_detail += "; timestamp file present"
     add("humanwatch", watch_active, watch_detail, required=False)
+    notifier = which("notify-send") or which("kdialog")
+    add("notify", bool(notifier), notifier or "not installed (optional)", required=False)
     add("sandbox", True,
         "expected under an agent sandbox: /dev/uinput hidden; ydotool uses the host daemon",
         required=False)

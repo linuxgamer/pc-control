@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 import tempfile
 import unittest
@@ -32,9 +33,14 @@ class TmpState(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self._old = os.environ.get("PC_STATE_DIR")
         self._old_human = os.environ.get("PC_HUMAN_IDLE_MS")
+        self._old_grace = os.environ.get("PC_TAKEOVER_GRACE_MS")
+        self._old_notify = os.environ.get("PC_TAKEOVER_NOTIFY")
         os.environ["PC_STATE_DIR"] = self._tmp.name
         os.environ["PC_HUMAN_IDLE_MS"] = "0"
+        os.environ["PC_TAKEOVER_GRACE_MS"] = "0"
+        os.environ["PC_TAKEOVER_NOTIFY"] = "0"
         pc._STATE = None
+        pc._TAKEOVER_USED = False
 
     def tearDown(self):
         if self._old is None:
@@ -45,7 +51,16 @@ class TmpState(unittest.TestCase):
             os.environ.pop("PC_HUMAN_IDLE_MS", None)
         else:
             os.environ["PC_HUMAN_IDLE_MS"] = self._old_human
+        if self._old_grace is None:
+            os.environ.pop("PC_TAKEOVER_GRACE_MS", None)
+        else:
+            os.environ["PC_TAKEOVER_GRACE_MS"] = self._old_grace
+        if self._old_notify is None:
+            os.environ.pop("PC_TAKEOVER_NOTIFY", None)
+        else:
+            os.environ["PC_TAKEOVER_NOTIFY"] = self._old_notify
         pc._STATE = None
+        pc._TAKEOVER_USED = False
 
     def write_shot(self, **meta):
         base = {
@@ -325,6 +340,77 @@ class HumanGateTests(TmpState):
             with self.assertRaises(pc.PcError):
                 pc.cmd_move(10, 10)
             yd.assert_not_called()
+
+
+class TakeoverTests(TmpState):
+    def setUp(self):
+        super().setUp()
+        self._ctl = tempfile.TemporaryDirectory()
+        self.addCleanup(self._ctl.cleanup)
+        self._old_ctl = os.environ.get("PC_CONTROL_DIR")
+        self._old_human_file = os.environ.get("PC_HUMAN_ACTIVITY_FILE")
+        os.environ["PC_CONTROL_DIR"] = self._ctl.name
+        os.environ["PC_HUMAN_ACTIVITY_FILE"] = str(Path(self._ctl.name) / "human-activity")
+        os.environ["PC_HUMAN_IDLE_MS"] = "800"
+        os.environ["PC_TAKEOVER_GRACE_MS"] = "250"
+        os.environ["PC_TAKEOVER_NOTIFY"] = "0"
+        pc._TAKEOVER_USED = False
+
+    def tearDown(self):
+        if self._old_ctl is None:
+            os.environ.pop("PC_CONTROL_DIR", None)
+        else:
+            os.environ["PC_CONTROL_DIR"] = self._old_ctl
+        if self._old_human_file is None:
+            os.environ.pop("PC_HUMAN_ACTIVITY_FILE", None)
+        else:
+            os.environ["PC_HUMAN_ACTIVITY_FILE"] = self._old_human_file
+        super().tearDown()
+
+    def stamp(self, seconds_ago: float):
+        path = Path(self._ctl.name) / "human-activity"
+        path.write_text(f"{time.time() - seconds_ago:.3f}", encoding="utf-8")
+
+    def test_warns_waits_then_allows(self):
+        self.stamp(0.1)
+        start = time.monotonic()
+        pc.check_gate()
+        self.assertGreaterEqual(time.monotonic() - start, 0.2)
+        self.assertTrue(pc._TAKEOVER_USED)
+
+    def test_zero_grace_still_blocks(self):
+        os.environ["PC_TAKEOVER_GRACE_MS"] = "0"
+        self.stamp(0.1)
+        with self.assertRaises(pc.PcError) as ctx:
+            pc.check_gate()
+        self.assertEqual(str(ctx.exception), "human_active")
+
+    def test_notify_only_when_human_active(self):
+        with mock.patch.object(pc, "notify_takeover") as notify:
+            pc.check_gate()
+            notify.assert_not_called()
+        self.stamp(0.1)
+        with mock.patch.object(pc, "notify_takeover") as notify:
+            pc.check_gate()
+            notify.assert_called_once()
+
+    def test_pause_during_grace_aborts(self):
+        self.stamp(0.1)
+        os.environ["PC_TAKEOVER_GRACE_MS"] = "800"
+        timer = threading.Timer(0.1, lambda: pc.cmd_pause("test"))
+        timer.start()
+        try:
+            with self.assertRaises(pc.PcError) as ctx:
+                pc.check_gate()
+            self.assertEqual(str(ctx.exception), "human_paused")
+        finally:
+            timer.join()
+
+    def test_after_warning_skips_repeat(self):
+        self.stamp(0.1)
+        pc.check_gate()
+        self.stamp(0.1)
+        pc.check_gate(grace=False)  # already warned for this process
 
 
 class LeaseTests(TmpState):

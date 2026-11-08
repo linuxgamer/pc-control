@@ -45,7 +45,7 @@ pipx install pc-control
 Until it is published, the release wheel works:
 
 ```bash
-pipx install https://github.com/linuxgamer/pc-control/releases/download/v0.8.3/pc_control-0.8.3-py3-none-any.whl
+pipx install https://github.com/linuxgamer/pc-control/releases/download/v0.9.0/pc_control-0.9.0-py3-none-any.whl
 ```
 
 The wheel contains the CLI only. The skill and services still need the

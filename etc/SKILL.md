@@ -84,11 +84,14 @@ pc-control resume                            # human only
 - On `human_paused` or `human_override`: stop immediately, do not retry, tell
   the human, and wait for an explicit `resume`.
 - Do not run `pause`/`resume` yourself; the human owns that channel.
-- The system install includes a humanwatch service; **physical** mouse/keyboard input
-  within `PC_HUMAN_IDLE_MS` (default 800 ms) also blocks mutating calls with
-  `error:"human_active"`. `status` reports `human_idle_ms`. Wait for idle,
-  retry once; if it keeps happening, ask. The watcher stores only timestamps,
-  never key contents.
+- The system install includes a humanwatch service. If **physical** mouse/keyboard
+  input is within `PC_HUMAN_IDLE_MS` (default 800 ms), the first mutating call
+  sends a desktop notification and waits `PC_TAKEOVER_GRACE_MS` (default 5000)
+  before acting. `pc-control pause` during that countdown cancels the action.
+  No notification or delay occurs when the human is idle. After the warning the
+  action proceeds; pause still wins. `error:"human_active"` only appears when
+  the grace is disabled (`PC_TAKEOVER_GRACE_MS=0`). The watcher stores only
+  timestamps, never key contents.
 - Pause and `human_active` are global. A **lease** coordinates agents: mutating
   calls auto-acquire a 15 s lease (`PC_LEASE_TTL_MS`), and a second owner gets
   `error:"lease_busy"`. Use `claim --ttl 60 --wait` for a long task, `renew`,

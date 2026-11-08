@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0
+
+- Takeover warning: when physical input is active, a mutating action sends a
+  desktop notification and waits `PC_TAKEOVER_GRACE_MS` (default 5000 ms).
+  `pc-control pause` cancels the countdown.
+- No warning when the human is idle; no tray yet.
+- `doctor` reports the notification helper.
+- 60 tests.
+
 ## 0.8.3
 
 - Fixed 1.25× coordinate bug: ydotool absolute input is logical, but native

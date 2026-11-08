@@ -34,7 +34,7 @@ pc-control doctor
 ```
 
 Requirements: Python 3.9+, Pillow, one screenshot backend, and `ydotool` +
-`ydotoold` for input. `--system` requires **sudo** and installs:
+`ydotoold` for input. Optional: `notify-send`/`kdialog` for the takeover warning. `--system` requires **sudo** and installs:
 
 - `pc-control` to `/usr/local/bin`
 - the skill for your user under `~/.dsh/skills`
@@ -102,6 +102,11 @@ pc-control resume
 The pause command is meant to be run by a human. An agent can read `status` but
 cannot un-pause itself.
 
+If an agent tries to act while you are using the mouse/keyboard, it shows a
+desktop notification and waits `PC_TAKEOVER_GRACE_MS` (default 5 s) before
+continuing. Run `pc-control pause` during that countdown to cancel. When you are
+idle there is no warning and no delay.
+
 ### Where are my files?
 
 Agent screenshots and state live in `./.pc-control/` (the current directory).
@@ -167,7 +172,8 @@ agent ── shell ──► pc-control ──► spectacle / grim / gnome-scree
 - **Window focus** — unminimizes and activates by title/class without clicking a
   title bar.
 - **Batch actions** — `run` chains shot → move → click → verify in one call.
-- **Human takeover** — `pause`, cursor re-verification, physical-input detection.
+- **Human takeover** — pause, cursor re-verification, physical-input detection,
+  and a 5 s notification countdown before acting while you are active.
 - **Concurrency lease** — two agents coordinate; the second gets `lease_busy`.
 - **Portable** — KDE, GNOME, and wlroots capture backends; Wayland or X11.
 
@@ -247,7 +253,7 @@ live aiming.
 | `ydotool failed` | `pc-control doctor`; check `ydotoold` and the socket. |
 | `error:"human_paused"` | The human paused control; stop and ask them to `pc-control resume`. |
 | `error:"human_override"` | The cursor moved before the click; do not retry blindly — take a fresh shot. |
-| `error:"human_active"` | Physical input was detected; wait for `PC_HUMAN_IDLE_MS` and retry once. |
+| `error:"human_active"` | Physical input was detected and grace is disabled; wait or set `PC_TAKEOVER_GRACE_MS`. |
 | `error:"lease_busy"` | Another agent holds the lease; `claim --wait` or coordinate. |
 | `error:"state_temporary"` | State fell back to `/tmp`; set `PC_STATE_DIR` to a host-visible path. |
 | `error:"no_feedback"` | No KWin cursor feedback; pass `--allow-approximate` only if you accept blind clicking. |
@@ -261,7 +267,9 @@ live aiming.
 | `PC_SCREENSHOT_BACKEND` | auto | `spectacle`, `grim`, `gnome-screenshot`, `wayshot`, `scrot`, `import` |
 | `PC_OCR_LANG` | from `LANG`, then `eng` | Tesseract language |
 | `PC_OCR_MAX_CHARS` | `4000` | OCR text cap; `0` disables truncation |
-| `PC_HUMAN_IDLE_MS` | `800` | Ignore mutating calls this long after physical input |
+| `PC_HUMAN_IDLE_MS` | `800` | Consider physical input active this long |
+| `PC_TAKEOVER_GRACE_MS` | `5000` | Notification countdown before acting while active |
+| `PC_TAKEOVER_NOTIFY` | `1` | Set `0` to disable the takeover notification |
 | `PC_LEASE_TTL_MS` | `15000` | Auto-lease lifetime; renewed on every mutating call |
 | `PC_AGENT_ID` | session/parent | Lease owner identity |
 | `PC_LEASE_DISABLED` | unset | `1` bypasses leases (single-agent debugging) |
