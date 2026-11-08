@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0
+
+- Human takeover: `pause`/`resume`/`status` use a cwd-independent control file;
+  every mutating call refuses to run while paused.
+- `click --at` re-reads the cursor before pressing and cancels with
+  `human_override` if it moved more than 3 px; it reports `verified`.
+- 29 unit tests.
+
 ## 0.3.3
 
 - Fixed OCR language selection: locale aliases (`ru`→`rus`, `en`→`eng`) and no

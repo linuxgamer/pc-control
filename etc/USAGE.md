@@ -82,6 +82,28 @@ with the display scale from `doctor` (logical vs native); that one only matters
 for `--scaled` window decorations. If the last shot was
 `--window`, either take a full shot or pass `--native`.
 
+## Human control
+
+The human can pause all mutating actions from a host terminal:
+
+```bash
+pc-control pause --reason "user took over"
+pc-control status
+pc-control resume
+```
+
+Pause lives in `$XDG_RUNTIME_DIR/pc-control/pause.json` (fallback
+`~/.cache/pc-control/`), so it is independent of the agent's cwd. While paused,
+mutating calls return `error:"human_paused"`; read-only calls still work. The
+agent must stop and ask, never retry or resume on its own.
+
+`click --at` re-reads the cursor right before pressing. If it moved more than
+3 px, the click is cancelled with `error:"human_override"` and the result omits
+`verified`; otherwise `verified` holds the checked cursor position. Without KWin
+feedback `verified` is `false` (the click proceeds).
+
+Error codes: `human_paused`, `human_override`.
+
 ## Batch format
 
 ```json
@@ -100,7 +122,7 @@ pc-control run - < actions.json
 ```
 
 Actions: `shot`, `move`, `move-rel`, `click`, `down`, `up`, `key`, `type`,
-`scroll`, `wait`, `focus`, `active`, `cursor`, `screen`.
+`scroll`, `wait`, `focus`, `active`, `cursor`, `screen`, `status`.
 `run` stops at the first failure unless `--continue-on-error`.
 
 ## Environment

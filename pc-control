@@ -26,7 +26,7 @@ import tempfile
 import time
 from pathlib import Path
 
-VERSION = "0.3.3"
+VERSION = "0.4.0"
 APP = "pc-control"
 DEFAULT_MAX_WIDTH = 1280
 JPEG_QUALITY = 72
@@ -167,6 +167,106 @@ def prune_shots(keep: int = KEEP_SHOTS) -> None:
             old.unlink(missing_ok=True)
     except OSError:
         pass
+
+# --------------------------------------------------------------------------- #
+# human takeover: a global pause channel
+# --------------------------------------------------------------------------- #
+
+def control_candidates() -> list[Path]:
+    """Directories shared by the agent and the human, independent of cwd."""
+    env = os.environ.get("PC_CONTROL_DIR")
+    if env:
+        return [Path(env).expanduser()]
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    return [Path(runtime) / "pc-control", Path.home() / ".cache" / "pc-control"]
+
+
+def read_pause() -> dict | None:
+    for base in control_candidates():
+        path = base / "pause.json"
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+def write_pause(data: dict) -> Path:
+    for base in control_candidates():
+        try:
+            base.mkdir(parents=True, exist_ok=True)
+            probe = base / f".probe-{os.getpid()}"
+            probe.write_text("", encoding="utf-8")
+            probe.unlink()
+            path = base / "pause.json"
+            path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            return path
+        except OSError:
+            continue
+    raise PcError("cannot write the pause file",
+                  "Set PC_CONTROL_DIR to a writable directory, or run pause on the host.")
+
+
+def clear_pause() -> bool:
+    removed = False
+    for base in control_candidates():
+        try:
+            (base / "pause.json").unlink()
+            removed = True
+        except FileNotFoundError:
+            pass
+        except OSError:
+            pass
+    return removed
+
+
+def is_paused() -> bool:
+    return read_pause() is not None
+
+
+def check_pause() -> None:
+    meta = read_pause()
+    if not meta:
+        return
+    since = meta.get("since")
+    when = time.strftime("%H:%M:%S", time.localtime(since)) if isinstance(since, (int, float)) else "unknown"
+    reason = meta.get("reason") or ""
+    suffix = f" ({reason})" if reason else ""
+    raise PcError("human_paused",
+                  f"Paused at {when}{suffix}. Ask the human to run: pc-control resume")
+
+
+def cmd_pause(reason: str | None = None) -> dict:
+    existing = read_pause()
+    if existing:
+        return {"ok": True, "paused": True, "already": True, **existing}
+    data = {
+        "since": time.time(),
+        "since_iso": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "reason": reason or "",
+        "pid": os.getpid(),
+    }
+    path = write_pause(data)
+    return {"ok": True, "paused": True, "path": str(path), **data}
+
+
+def cmd_resume() -> dict:
+    existing = read_pause()
+    removed = clear_pause()
+    if existing and not removed:
+        raise PcError("cannot clear the pause file",
+                      "Remove it manually or run resume outside the sandbox.")
+    return {"ok": True, "was_paused": bool(existing), "paused": is_paused()}
+
+
+def cmd_status() -> dict:
+    meta = read_pause()
+    if meta:
+        return {"ok": True, "paused": True, "human_active": False, **meta}
+    return {"ok": True, "paused": False, "human_active": False}
+
 
 
 # --------------------------------------------------------------------------- #
@@ -544,6 +644,7 @@ def cmd_active() -> dict:
 
 
 def cmd_focus(pattern: str) -> dict:
+    check_pause()
     body = (
         'var pat = ' + json.dumps(pattern.lower()) + ';\n'
         'var list = (typeof workspace.windowList === "function") ? workspace.windowList() : workspace.clientList();\n'
@@ -615,6 +716,8 @@ def map_shot_point(x: float, y: float, native: bool = False) -> tuple[float, flo
 
 def cmd_move(x: float, y: float, native: bool = False, scaled: bool = False,
              dry_run: bool = False) -> dict:
+    if not dry_run:
+        check_pause()
     nx, ny = map_shot_point(x, y, native)
     if scaled:
         info = display_info()
@@ -633,6 +736,8 @@ def cmd_move(x: float, y: float, native: bool = False, scaled: bool = False,
     attempts = 0
     gx = gy = 1.0
     for attempts in range(1, 26):
+        if not dry_run:
+            check_pause()
         dx, dy = tx - cx, ty - cy
         if abs(dx) <= 2 and abs(dy) <= 2:
             break
@@ -673,6 +778,8 @@ def cmd_cursor() -> dict:
 
 
 def cmd_move_rel(dx: float, dy: float, dry_run: bool = False) -> dict:
+    if not dry_run:
+        check_pause()
     args = ["mousemove", "-x", str(round(dx)), "-y", str(round(dy))]
     if dry_run:
         return {"ok": True, "dry_run": True, "ydotool": args}
@@ -682,13 +789,31 @@ def cmd_move_rel(dx: float, dy: float, dry_run: bool = False) -> dict:
 
 def cmd_click(button: str, double: bool = False, at: list[float] | None = None,
               native: bool = False, dry_run: bool = False) -> dict:
+    if not dry_run:
+        check_pause()
     if button not in BUTTONS:
         raise PcError(f"unknown button {button!r}", "left, right, middle, side, extra")
     moved = None
+    verified = None
     if at:
         moved = cmd_move(at[0], at[1], native=native, dry_run=dry_run)
         if not dry_run:
-            time.sleep(0.05)
+            target = moved.get("target") if isinstance(moved, dict) else None
+            if target:
+                try:
+                    cx, cy = cursor_pos()
+                    verified = [cx, cy]
+                    if abs(cx - target[0]) > 3 or abs(cy - target[1]) > 3:
+                        raise PcError(
+                            "human_override",
+                            f"cursor moved to ({cx},{cy}) before click (target {target}); click cancelled",
+                        )
+                except PcError as exc:
+                    if str(exc) == "human_override":
+                        raise
+                    verified = False  # no KWin feedback; proceed carefully
+            time.sleep(0.03)
+            check_pause()
     args = ["click"]
     if double:
         args += ["--repeat", "2", "--next-delay", "80"]
@@ -696,10 +821,12 @@ def cmd_click(button: str, double: bool = False, at: list[float] | None = None,
     if dry_run:
         return {"ok": True, "dry_run": True, "ydotool": args, "moved": moved}
     ydotool(args)
-    return {"ok": True, "button": button, "double": double, "moved": moved}
+    return {"ok": True, "button": button, "double": double, "moved": moved,
+            "verified": verified}
 
 
 def cmd_button(button: str, pressed: bool) -> dict:
+    check_pause()
     if button not in BUTTONS:
         raise PcError(f"unknown button {button!r}", "left, right, middle, side, extra")
     code = BUTTONS[button][1]
@@ -728,6 +855,8 @@ def parse_keys(spec: str) -> list[int]:
 
 
 def cmd_key(spec: str, hold_ms: int = 0, dry_run: bool = False) -> dict:
+    if not dry_run:
+        check_pause()
     codes = parse_keys(spec)
     events = [f"{code}:1" for code in codes]
     if hold_ms > 0:
@@ -746,6 +875,8 @@ def cmd_key(spec: str, hold_ms: int = 0, dry_run: bool = False) -> dict:
 
 
 def cmd_type(text: str, dry_run: bool = False) -> dict:
+    if not dry_run:
+        check_pause()
     args = ["type", "--", text] if text.startswith("-") else ["type", text]
     if dry_run:
         return {"ok": True, "dry_run": True, "ydotool": args}
@@ -754,6 +885,7 @@ def cmd_type(text: str, dry_run: bool = False) -> dict:
 
 
 def cmd_scroll(amount: int, horizontal: bool = False) -> dict:
+    check_pause()
     x, y = (amount, 0) if horizontal else (0, amount)
     ydotool(["mousemove", "--wheel", "-x", str(x), "-y", str(y)])
     return {"ok": True, "scroll": amount, "axis": "horizontal" if horizontal else "vertical"}
@@ -847,6 +979,8 @@ def dispatch(action: dict) -> dict:
         return {"ok": True, "waited_ms": int(action.get("ms", 0))}
     if name == "cursor":
         return cmd_cursor()
+    if name == "status":
+        return cmd_status()
     if name == "screen":
         info = display_info()
         meta = read_last_shot()
@@ -889,6 +1023,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("doctor")
     sub.add_parser("screen")
+    p = sub.add_parser("pause")
+    p.add_argument("--reason")
+    sub.add_parser("resume")
+    sub.add_parser("status")
 
     p = sub.add_parser("shot")
     p.add_argument("--window", action="store_true")
@@ -959,6 +1097,12 @@ def main(argv: list[str]) -> None:
             emit(cmd_doctor())
         if args.command == "screen":
             emit({"ok": True, **display_info(), "last_shot": read_last_shot()})
+        if args.command == "pause":
+            emit(cmd_pause(args.reason))
+        if args.command == "resume":
+            emit(cmd_resume())
+        if args.command == "status":
+            emit(cmd_status())
         if args.command == "shot":
             kind = "window" if args.window else "screen" if args.screen else "full"
             emit(screenshot(kind, args.out, args.region, args.max_width, args.full,

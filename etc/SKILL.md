@@ -47,7 +47,7 @@ Token strategy:
 - `cursor` reports both `native` and `shot` coordinates in the latest shot's space.
 - `move` is closed-loop (measure → step → re-measure); it lands within ~2 px in ~1–3 s. A `warning` means it did not converge — take a shot and verify before clicking.
 - `move-rel DX DY` is raw relative motion (no mapping); use it for game mouse-look.
-- JSON fields: `move` → `screenshot_xy`, `target`, `cursor`, `error`, `attempts`; `cursor` → `native`, `shot`, `scale`, `offset`; `shot` → `path`, `width`, `height`, `scale_x`, `ocr_lang`.
+- JSON fields: `move` → `screenshot_xy`, `target`, `cursor`, `error`, `attempts`; `cursor` → `native`, `shot`, `scale`, `offset`; `shot` → `path`, `width`, `height`, `scale_x`, `ocr_lang`; `click --at` → `verified`.
 
 ## Safety
 
@@ -55,6 +55,26 @@ Token strategy:
 - Do not click a target you have not seen in the latest screenshot.
 - Settings/plugin pages can swallow sidebar clicks; prefer `focus`, keyboard shortcuts, or ask the user.
 - Never touch password fields, payment dialogs, or destructive buttons. After 3 failed attempts at one target, stop and report.
+
+## Human takeover
+
+The human can pause all mutating actions at any time. This is intentional;
+never work around it.
+
+```bash
+pc-control pause --reason "user took over"   # human, on the host
+pc-control status
+pc-control resume                            # human only
+```
+
+- While paused, `move`, `move-rel`, `click`, `down`/`up`, `key`, `type`, `scroll`
+  and `focus` return `{"ok":false,"error":"human_paused"}`. Read-only calls
+  (`shot`, `cursor`, `active`, `screen`, `doctor`, `status`) still work.
+- `click --at` re-reads the cursor immediately before pressing. If it moved
+  more than 3 px, it returns `error:"human_override"` and does **not** click.
+- On `human_paused` or `human_override`: stop immediately, do not retry, tell
+  the human, and wait for an explicit `resume`.
+- Do not run `pause`/`resume` yourself; the human owns that channel.
 
 ## The loop
 
@@ -76,7 +96,7 @@ pc-control run '[{"action":"shot","ocr":true},
   {"action":"wait","ms":300},{"action":"shot"}]'
 ```
 
-`run` accepts `shot`, `move`, `move-rel`, `click`, `down`, `up`, `key`, `type`, `scroll`, `wait`, `focus`, `active`, `cursor`, `screen`.
+`run` accepts `shot`, `move`, `move-rel`, `click`, `down`, `up`, `key`, `type`, `scroll`, `wait`, `focus`, `active`, `cursor`, `screen`, `status`.
 
 ## Windows and apps
 
@@ -118,6 +138,7 @@ scroll N [--horizontal]               # negative = down
 wait MS
 run JSON [--continue-on-error]
 active | cursor | focus PATTERN
+pause [--reason TEXT] | resume | status
 ```
 
 ## Failure handling

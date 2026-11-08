@@ -113,6 +113,7 @@ scroll N [--horizontal]                 # negative = down
 wait MS
 run JSON [--continue-on-error]
 active | cursor | focus PATTERN
+pause [--reason TEXT] | resume | status
 ```
 
 `run` actions: `shot`, `move`, `move-rel`, `click`, `down`, `up`, `key`, `type`,
@@ -149,6 +150,8 @@ live aiming.
 | `move` reports a warning | Retry once; if it persists, take a shot and verify the pointer's effect. |
 | `no screenshot backend` | Install `spectacle`, `grim`, `gnome-screenshot`, `wayshot`, or `scrot`. |
 | `ydotool failed` | `pc-control doctor`; check `ydotoold` and the socket. |
+| `error:"human_paused"` | The human paused control; stop and ask them to `pc-control resume`. |
+| `error:"human_override"` | The cursor moved before the click; do not retry blindly — take a fresh shot. |
 | OCR text looks wrong | Check `ocr_lang` in the shot JSON; install the matching Tesseract language and pass `--ocr-lang` (e.g. `rus`). Mixed/Cyrillic UI can still transliterate. |
 
 ## Configuration

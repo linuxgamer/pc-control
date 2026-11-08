@@ -143,6 +143,89 @@ class OcrLangTests(unittest.TestCase):
             self.assertEqual(pc.pick_ocr_lang("en"), "eng")
 
 
+class ControlTests(TmpState):
+    def setUp(self):
+        super().setUp()
+        self._ctl = tempfile.TemporaryDirectory()
+        self.addCleanup(self._ctl.cleanup)
+        self._old_ctl = os.environ.get("PC_CONTROL_DIR")
+        os.environ["PC_CONTROL_DIR"] = self._ctl.name
+
+    def tearDown(self):
+        if self._old_ctl is None:
+            os.environ.pop("PC_CONTROL_DIR", None)
+        else:
+            os.environ["PC_CONTROL_DIR"] = self._old_ctl
+        super().tearDown()
+
+    def test_pause_status_resume(self):
+        self.assertEqual(pc.cmd_status()["paused"], False)
+        pc.cmd_pause("user took over")
+        status = pc.cmd_status()
+        self.assertEqual(status["paused"], True)
+        self.assertEqual(status["reason"], "user took over")
+        with self.assertRaises(pc.PcError):
+            pc.check_pause()
+        self.assertEqual(pc.cmd_resume()["was_paused"], True)
+        self.assertEqual(pc.cmd_status()["paused"], False)
+
+    def test_pause_blocks_move(self):
+        pc.cmd_pause("test")
+        with mock.patch.object(pc, "ydotool") as yd:
+            with self.assertRaises(pc.PcError) as ctx:
+                pc.cmd_move(10, 10)
+            self.assertEqual(str(ctx.exception), "human_paused")
+            yd.assert_not_called()
+
+    def test_pause_blocks_click(self):
+        pc.cmd_pause("test")
+        with mock.patch.object(pc, "ydotool") as yd:
+            with self.assertRaises(pc.PcError):
+                pc.cmd_click("left")
+            yd.assert_not_called()
+
+
+class ClickVerifyTests(TmpState):
+    def setUp(self):
+        super().setUp()
+        self._ctl = tempfile.TemporaryDirectory()
+        self.addCleanup(self._ctl.cleanup)
+        self._old_ctl = os.environ.get("PC_CONTROL_DIR")
+        os.environ["PC_CONTROL_DIR"] = self._ctl.name
+
+    def tearDown(self):
+        if self._old_ctl is None:
+            os.environ.pop("PC_CONTROL_DIR", None)
+        else:
+            os.environ["PC_CONTROL_DIR"] = self._old_ctl
+        super().tearDown()
+
+    def test_click_aborts_if_cursor_moved(self):
+        with mock.patch.object(pc, "cmd_move", return_value={"ok": True, "target": [100, 100]}), \
+             mock.patch.object(pc, "cursor_pos", return_value=(150, 150)), \
+             mock.patch.object(pc, "ydotool") as yd:
+            with self.assertRaises(pc.PcError) as ctx:
+                pc.cmd_click("left", at=[10, 10])
+            self.assertEqual(str(ctx.exception), "human_override")
+            yd.assert_not_called()
+
+    def test_click_proceeds_when_cursor_matches(self):
+        with mock.patch.object(pc, "cmd_move", return_value={"ok": True, "target": [100, 100]}), \
+             mock.patch.object(pc, "cursor_pos", return_value=(101, 99)), \
+             mock.patch.object(pc, "ydotool") as yd:
+            result = pc.cmd_click("left", at=[10, 10])
+            self.assertEqual(result["verified"], [101, 99])
+            yd.assert_called_once()
+
+    def test_click_proceeds_without_kwin_feedback(self):
+        with mock.patch.object(pc, "cmd_move", return_value={"ok": True, "target": [100, 100]}), \
+             mock.patch.object(pc, "cursor_pos", side_effect=pc.PcError("KWin scripting not available")), \
+             mock.patch.object(pc, "ydotool") as yd:
+            result = pc.cmd_click("left", at=[10, 10])
+            self.assertIs(result["verified"], False)
+            yd.assert_called_once()
+
+
 class CliTests(unittest.TestCase):
     def test_version(self):
         out = subprocess.run([sys.executable, str(CLI), "--version"],
