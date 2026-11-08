@@ -168,6 +168,7 @@ live aiming.
 | `PC_HUMAN_IDLE_MS` | `800` | Ignore mutating calls this long after physical input |
 | `PC_LEASE_TTL_MS` | `15000` | Auto-lease lifetime; renewed on every mutating call |
 | `PC_AGENT_ID` | session/parent | Lease owner identity |
+| `PC_LEASE_DISABLED` | unset | `1` bypasses leases (single-agent debugging) |
 | `YDOTOOL_SOCKET` | `/run/ydotool.sock` | Daemon socket |
 
 ## Development
