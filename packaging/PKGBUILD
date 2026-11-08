@@ -1,0 +1,28 @@
+# Maintainer: pc-control <noreply@github.com>
+pkgname=pc-control
+pkgver=0.8.0
+pkgrel=1
+pkgdesc="Desktop control for agents and humans: screenshots, mouse, keyboard"
+arch=('any')
+url="https://github.com/linuxgamer/pc-control"
+license=('MIT')
+depends=('python' 'python-pillow' 'ydotool')
+optdepends=('tesseract: OCR support')
+install=pc-control.install
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 pc-control "$pkgdir/usr/bin/pc-control"
+  install -Dm644 etc/SKILL.md "$pkgdir/usr/share/pc-control/SKILL.md"
+  install -Dm644 etc/HUMAN.md "$pkgdir/usr/share/pc-control/HUMAN.md"
+  install -Dm644 etc/USAGE.md "$pkgdir/usr/share/pc-control/USAGE.md"
+  install -Dm644 etc/pc-control.desktop.in "$pkgdir/usr/share/pc-control/etc/pc-control.desktop.in"
+  install -Dm755 scripts/humanwatch.py "$pkgdir/usr/share/pc-control/scripts/humanwatch.py"
+  install -Dm755 install.sh "$pkgdir/usr/share/pc-control/install.sh"
+  install -d "$pkgdir/usr/share/applications"
+  sed "s|@EXEC@|/usr/bin/pc-control|g" etc/pc-control.desktop.in \
+    > "$pkgdir/usr/share/applications/pc-control.desktop"
+  chmod 644 "$pkgdir/usr/share/applications/pc-control.desktop"
+}

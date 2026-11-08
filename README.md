@@ -3,62 +3,63 @@
 [![test](https://github.com/linuxgamer/pc-control/actions/workflows/test.yml/badge.svg)](https://github.com/linuxgamer/pc-control/actions/workflows/test.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-`pc-control` is a small, dependency-light CLI that gives an llm screenshots,
-mouse, keyboard, window focus, and app switching on Wayland or X11. Every call
-prints one JSON object, so it composes cleanly with tool-using models.
+Desktop control for agents and humans on Linux (Wayland or X11): screenshots,
+mouse, keyboard, window focus, and app switching.
 
-![pc-control demo](.github/assets/demo.gif)
+## Just want a screenshot?
 
-It can work with any llm(**multimodality recommended**) that can run python. The skill is in [`etc/SKILL.md`](etc/SKILL.md), generic instructions are in [`etc/USAGE.md`](etc/USAGE.md).
+Once installed (one command, below):
 
-```
-agent ── shell ──► pc-control ──► spectacle / grim / gnome-screenshot ──► compact JPEG
-                      └────────► ydotool ──► ydotoold ──► /dev/uinput ──► apps & games
+```bash
+pc-control screenshot
 ```
 
-## Harness support
+Saves a full-resolution PNG to `~/Pictures/pc-control/Screenshot-….png`, opens it
+in your image viewer, and prints one sentence. Add `--no-open` to skip the
+viewer or `--json` for a machine-readable result. The installer also adds a
+**Take Screenshot** entry to your application menu.
 
-`pc-control` is **harness-agnostic**: one Python file, no imports from DeepSeek
-Harness, one JSON object per call. Any runtime that can run shell commands and
-read an image can drive it.
+## What is this?
 
-- [`etc/USAGE.md`](etc/USAGE.md) — generic system-prompt snippet, JSON contract,
-  token strategy, batch format.
-- [`etc/SKILL.md`](etc/SKILL.md) — the same guidance in DeepSeek Harness skill
-  format (works as a plain instruction document too).
-- `install.sh` installs the skill into `~/.dsh/skills` by default; use
-  `--skill-dir DIR` for another harness, or `--no-skill` for the CLI only.
+- **For humans:** a command-line way to take screenshots and drive your own
+  desktop — useful when you want to script a click or let an assistant help.
+- **For agents:** one JSON object per call, with compact screenshots, automatic
+  coordinate mapping, OCR, batch actions, a human-takeover pause, and a lease
+  so two agents do not fight over the mouse.
+- **Not:** a remote-desktop server, a GUI automation recorder, or a cloud
+  service. Nothing leaves your machine.
 
-## Features
-
-- **Simulates real input** — `ydotool` creates a kernel virtual device, so
-  native Wayland apps *and games* receive mouse/keyboard, including relative
-  look.
-- **Saves tokens** — compacts screenshots (1280 px) by default, `--region`
-  crops, `--ocr` returns text, `--grid` for precise coordinates, `--full` when
-  quality matters.
-- **Automatic coordinate mapping** — coordinates from a downscaled or cropped
-  shot are mapped back to native pixels; no manual scale math.
-- **Closed-loop mouse movement** — reads the real cursor via KWin, learns
-  pointer acceleration, and lands within ~2 px.
-- **Window focus** — `focus` unminimizes and activates by title/class, so you
-  never have to click a title bar.
-- **Batch actions** — `run` chains shot → move → click → verify in one call.
-- **Portable** — KDE, GNOME, and wlroots capture backends; distro-agnostic
-  setup for `uinput` + `ydotool`; single-file Python CLI.
+The full human guide is in [`etc/HUMAN.md`](etc/HUMAN.md). Agent integration is
+in [`etc/USAGE.md`](etc/USAGE.md) and [`etc/SKILL.md`](etc/SKILL.md).
 
 ## Install
+
+### One command (any distro)
 
 ```bash
 git clone https://github.com/linuxgamer/pc-control.git
 cd pc-control
-sudo ./install.sh --system   # /usr/local/bin + skill + uinput + ydotoold + humanwatch
-pc-control doctor
+sudo ./install.sh --system
+pc-control screenshot
 ```
 
-`--system` installs the CLI to `/usr/local/bin`, the skill for the target user,
-and both host services. It needs root. Without root, `./install.sh` installs to
-`~/.local/bin` and `~/.dsh/skills`.
+Requirements: Python 3.9+, Pillow, one screenshot backend, and `ydotool` +
+`ydotoold` for input. `--system` installs the input pieces.
+
+`--system` installs:
+
+- `pc-control` to `/usr/local/bin`
+- the skill for your user under `~/.dsh/skills`
+- a **Take Screenshot** menu entry
+- `uinput`, the udev rule, `ydotoold`, and the humanwatch service
+
+**Why sudo?** `/dev/uinput`, udev, and systemd services are system-wide. The
+screenshot and click commands cannot create a virtual mouse/keyboard without
+them. The humanwatch service is optional (`--no-humanwatch`) and writes only a
+timestamp — never key contents.
+
+Without root, `./install.sh` installs the CLI to `~/.local/bin` and the skill to
+`~/.dsh/skills`. Screenshots work; clicking/typing need the system step.
 
 If `pc-control` is not found afterwards, add `~/.local/bin` to PATH:
 
@@ -66,40 +67,103 @@ If `pc-control` is not found afterwards, add `~/.local/bin` to PATH:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-`sudo ./install.sh --system` installs `ydotool` with your package manager
-(pacman/apt/dnf/zypper), loads `uinput`, adds the udev rule, and runs `ydotoold`
-plus the humanwatch service (opt out with `--no-humanwatch`). The socket is
-`/run/ydotool.sock`, owned by your user, mode 0600. `--no-cli` keeps the CLI
-where it is and only installs the services.
+### Package-manager options
 
-From a checkout with pip or pipx:
+| Method | Command | What you get |
+|---|---|---|
+| Script | `sudo ./install.sh --system` | Everything, any distro |
+| Arch package | `cd packaging && makepkg -si` | AUR-ready PKGBUILD; one-time service setup |
+| pipx | `pipx install .` | CLI only, isolated; no services |
+| Released wheel | `pipx install <wheel-url>` | CLI only; no services |
+
+The `packaging/` directory has an AUR-ready `PKGBUILD` and notes. PyPI publishing
+is prepared but not live yet; the GitHub release wheel is installable with
+pipx today.
+
+### Update and uninstall
 
 ```bash
-pipx install .          # isolated, puts pc-control on PATH
-# or
-python3 -m pip install --user .
+git pull
+./install.sh
+sudo ./install.sh --system
+
+./install.sh --uninstall
+sudo ./install.sh --system --uninstall
 ```
 
-For development inside a checkout (not the normal install):
+## Use it yourself
+
+### Take a screenshot
 
 ```bash
-./install.sh --local         # ./.pc-control/bin + ./.dsh/skills
-./.pc-control/bin/pc-control doctor
+pc-control screenshot                  # full PNG, opens viewer
+pc-control screenshot --no-open        # just save it
+pc-control screenshot --region 0 0 800 600
+pc-control screenshot --out ~/Desktop/shot.png
 ```
 
-Requirements: Python 3.9+, Pillow (compact/grid/region), one screenshot backend,
-`ydotool` + root `ydotoold`. Optional: `tesseract` for OCR, KDE Plasma for
-cursor/focus feedback.
+### Click and type
 
-## Quick start
+Coordinates are pixels from a `pc-control shot` image (or from the
+`screenshot` screen size). Use `pc-control shot --grid` to see coordinates.
 
 ```bash
-pc-control shot                  # compact screenshot, prints JSON with path
-pc-control shot --grid           # + 100 px grid for picking coordinates
+pc-control shot                          # compact screenshot with a path
 pc-control click left --at 640 360
 pc-control type "hello"
 pc-control key ctrl+s
-pc-control shot --ocr            # text instead of pixels
+pc-control scroll -3
+```
+
+### Pause an agent
+
+```bash
+pc-control pause --reason "I need the mouse"
+pc-control status
+pc-control resume
+```
+
+The pause command is meant to be run by a human. An agent can read `status` but
+cannot un-pause itself.
+
+### Where are my files?
+
+- Human screenshots: `~/Pictures/pc-control/`
+- Agent screenshots and state: `./.pc-control/` (the current directory)
+- The menu entry runs `pc-control screenshot`, so it saves to Pictures.
+
+### Check it
+
+```bash
+pc-control doctor
+```
+
+On a terminal this prints a short plain-English summary. `pc-control doctor
+--json` is available for scripts.
+
+## For agents
+
+`pc-control` is harness-agnostic: one Python file, no imports from a particular
+agent runtime, one JSON object per agent call. Any runtime that can run shell
+commands and read an image can drive it.
+
+- [`etc/USAGE.md`](etc/USAGE.md) — generic system prompt, JSON contract, token
+  strategy, batch format.
+- [`etc/SKILL.md`](etc/SKILL.md) — the same guidance in DeepSeek Harness skill
+  format.
+- `install.sh` installs the skill into `~/.dsh/skills` by default; use
+  `--skill-dir DIR` for another harness, or `--no-skill` for the CLI only.
+
+### Agent quick start
+
+```bash
+pc-control doctor
+pc-control shot --json                  # compact JPEG + coordinates
+pc-control move 640 360                 # image pixels; auto-mapped
+pc-control click left --at 640 360
+pc-control type "hello"
+pc-control key ctrl+s
+pc-control shot --ocr                   # text instead of pixels
 pc-control focus konsole
 pc-control run '[{"action":"shot"},{"action":"click","at":[640,360]},{"action":"shot"}]'
 ```
@@ -107,12 +171,42 @@ pc-control run '[{"action":"shot"},{"action":"click","at":[640,360]},{"action":"
 Read the image at the returned `path` with your agent's image tool, or use
 `--ocr` for text-only mode.
 
-## More commands
+> `shot` switches to human output on a TTY. Agents should call `shot --json`
+> (or run with stdout piped) to guarantee JSON. `screenshot` is always human
+> unless `--json` is passed.
+
+### How it works
+
+```
+agent ── shell ──► pc-control ──► spectacle / grim / gnome-screenshot ──► compact JPEG
+                      └────────► ydotool ──► ydotoold ──► /dev/uinput ──► apps & games
+```
+
+### Features
+
+- **Real input** — `ydotool` creates a kernel virtual device, so native Wayland
+  apps and games receive mouse/keyboard, including relative look.
+- **Token-aware screenshots** — 1280 px JPEG by default, `--region`, `--ocr`,
+  `--grid`, `--full`.
+- **Automatic coordinate mapping** — image pixels map back to native pixels.
+- **Closed-loop movement** — reads the KWin cursor and lands within ~2 px.
+- **Window focus** — unminimizes and activates by title/class without clicking a
+  title bar.
+- **Batch actions** — `run` chains shot → move → click → verify in one call.
+- **Human takeover** — `pause`, cursor re-verification, physical-input detection.
+- **Concurrency lease** — two agents coordinate; the second gets `lease_busy`.
+- **Portable** — KDE, GNOME, and wlroots capture backends; Wayland or X11.
+
+## Commands
 
 ```text
-doctor | screen
+doctor [--json] | screenshot [...] | screen
 shot [--window|--screen] [--region X Y W H] [--grid] [--ocr] [--ocr-lang L]
      [--ocr-max-chars N] [--full] [--max-width N] [--out PATH]
+     [--human] [--json] [--no-open]
+screenshot [--window|--screen] [--region X Y W H] [--grid] [--ocr]
+           [--ocr-lang L] [--ocr-max-chars N] [--max-width N] [--out PATH]
+           [--no-open] [--json]
 move X Y [--native] [--scaled] [--dry-run]
 move-rel DX DY [--dry-run]
 click [left|right|middle|side|extra] [--double] [--at X Y] [--native]
@@ -156,6 +250,21 @@ live aiming.
 
 ## Troubleshooting
 
+### For humans
+
+| Symptom | Fix |
+|---|---|
+| `pc-control: command not found` | Add `~/.local/bin` to PATH, or open a new terminal. |
+| `cannot write to the Pictures folder` | Use `pc-control screenshot --out ~/Desktop/shot.png` or set `PC_PICTURES_DIR`. |
+| The image viewer did not open | Add `--no-open`; the path is printed. Open it manually. |
+| `error:"state_temporary"` | Run from your home/workspace, or set `PC_STATE_DIR=$HOME/.pc-control`. |
+| Clicking/typing does nothing | Run `sudo ./install.sh --system`; check `pc-control doctor`. |
+| `no screenshot backend` | Install `spectacle`, `grim`, `gnome-screenshot`, `wayshot`, or `scrot`. |
+| `error:"no_feedback"` | KDE is required for verified clicks; `--allow-approximate` clicks blind. |
+| `sudo` asks for a password | Expected. The system step needs root. |
+
+### For agents
+
 | Symptom | Check |
 |---|---|
 | A click seems ignored | Take a fresh `shot` first. A collapsed sidebar, hidden panel, or moved window changes the layout, so an old coordinate now hits empty space. |
@@ -178,12 +287,13 @@ live aiming.
 | `PC_STATE_DIR` | `./.pc-control` | Shots, last-shot geometry, KWin helpers |
 | `PC_SCREENSHOT_BACKEND` | auto | `spectacle`, `grim`, `gnome-screenshot`, `wayshot`, `scrot`, `import` |
 | `PC_OCR_LANG` | from `LANG`, then `eng` | Tesseract language |
+| `PC_OCR_MAX_CHARS` | `4000` | OCR text cap; `0` disables truncation |
 | `PC_HUMAN_IDLE_MS` | `800` | Ignore mutating calls this long after physical input |
 | `PC_LEASE_TTL_MS` | `15000` | Auto-lease lifetime; renewed on every mutating call |
-| `PC_OCR_MAX_CHARS` | `4000` | OCR text cap; `0` disables truncation |
 | `PC_AGENT_ID` | session/parent | Lease owner identity |
 | `PC_LEASE_DISABLED` | unset | `1` bypasses leases (single-agent debugging) |
-| `YDOTOOL_SOCKET` | `/run/ydotool.sock` | Daemon socket |
+| `PC_PICTURES_DIR` | `~/Pictures` | Human screenshot root |
+| `YDOTOOL_SOCKET` | `/etc/pc-control/socket` or `/run/ydotool.sock` | Daemon socket |
 
 ## Development
 
@@ -198,8 +308,10 @@ Layout:
 pc-control       single-file CLI (stdlib; Pillow optional)
 install.sh       user installer + --system host setup
 scripts/humanwatch.py  evdev input watcher (timestamp only)
+etc/HUMAN.md     human guide
 etc/SKILL.md     skill for any harness
 etc/USAGE.md     generic agent instructions
+packaging/       PKGBUILD + packaging notes
 ```
 
 ## License

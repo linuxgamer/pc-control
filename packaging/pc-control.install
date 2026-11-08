@@ -1,0 +1,7 @@
+post_install() {
+  echo "One-time host setup: sudo /usr/share/pc-control/install.sh --system --no-cli"
+  echo "Then: pc-control screenshot"
+}
+post_upgrade() {
+  post_install
+}

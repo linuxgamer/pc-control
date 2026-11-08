@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0
+
+- Human mode: `pc-control screenshot` saves a full-resolution PNG to
+  `~/Pictures/pc-control/`, opens it, and prints one sentence.
+- `shot` switches to the same human behavior on a TTY; `--json` forces JSON.
+- `doctor` prints a plain summary on a TTY; `--json` forces the structured form.
+- Friendly plain-text errors in human mode.
+- 49 unit tests.
+
 ## 0.7.0
 
 - Clicks without KWin cursor feedback now refuse with `no_feedback` unless

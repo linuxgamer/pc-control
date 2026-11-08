@@ -5,6 +5,11 @@ description: Use when the user asks to see, click, type in, or otherwise operate
 
 # PC control
 
+Human guide: `etc/HUMAN.md`. For a human, `pc-control screenshot` saves a PNG to Pictures, opens it, and
+prints one sentence. The agent contract below uses `shot`/`--json`; on a TTY
+`shot` switches to human output, so pass `--json` if you need JSON from an
+interactive terminal.
+
 Helper: `pc-control` if it is on PATH (`sudo ./install.sh --system` puts it in `/usr/local/bin`); otherwise `~/.local/bin/pc-control`. In a source checkout `./pc-control` also works. Examples below use `pc-control`; substitute the full path if needed. Every call prints **one JSON object**; non-zero exit means failure. Screenshots come from the compositor; mouse/keyboard come from `ydotool` (uinput), which games see as a real device.
 
 ## Before acting
@@ -140,7 +145,8 @@ pc-control key enter
 ## Commands
 
 ```text
-doctor | screen | shot [--window|--screen] [--region X Y W H] [--grid] [--ocr] [--ocr-max-chars N]
+doctor [--json] | screenshot [...] | screen
+shot [--window|--screen] [--region X Y W H] [--grid] [--ocr] [--ocr-max-chars N]
        | [--full] [--max-width N] [--out PATH]
 move X Y [--native] [--scaled] [--dry-run]
 move-rel DX DY [--dry-run]

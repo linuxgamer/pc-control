@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -10,6 +11,8 @@ import sys
 import time
 import tempfile
 import unittest
+from argparse import Namespace
+from contextlib import redirect_stdout
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from unittest import mock
@@ -397,6 +400,71 @@ class OcrLimitTests(unittest.TestCase):
     def test_env(self):
         with mock.patch.dict(os.environ, {"PC_OCR_MAX_CHARS": "12"}, clear=False):
             self.assertEqual(pc.ocr_char_limit(None), 12)
+
+
+class HumanModeTests(unittest.TestCase):
+    def test_screenshot_is_always_human(self):
+        args = Namespace(command="screenshot", json=False, human=False)
+        with mock.patch.object(sys.stdout, "isatty", return_value=False):
+            self.assertTrue(pc.wants_human(args))
+
+    def test_shot_is_human_on_tty(self):
+        args = Namespace(command="shot", json=False, human=False)
+        with mock.patch.object(sys.stdout, "isatty", return_value=True):
+            self.assertTrue(pc.wants_human(args))
+        with mock.patch.object(sys.stdout, "isatty", return_value=False):
+            self.assertFalse(pc.wants_human(args))
+
+    def test_json_overrides_human(self):
+        args = Namespace(command="screenshot", json=True, human=True)
+        self.assertFalse(pc.wants_human(args))
+
+    def test_human_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old = os.environ.get("PC_PICTURES_DIR")
+            os.environ["PC_PICTURES_DIR"] = tmp
+            try:
+                path = pc.human_shot_path()
+                self.assertTrue(path.name.startswith("Screenshot-"))
+                self.assertEqual(path.suffix, ".png")
+                self.assertEqual(path.parent, Path(tmp) / "pc-control")
+            finally:
+                if old is None:
+                    os.environ.pop("PC_PICTURES_DIR", None)
+                else:
+                    os.environ["PC_PICTURES_DIR"] = old
+
+    def test_human_screenshot_prints_one_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old = os.environ.get("PC_PICTURES_DIR")
+            os.environ["PC_PICTURES_DIR"] = tmp
+            meta = {"path": str(Path(tmp) / "Screenshot.png"), "width": 1920,
+                    "height": 1080, "native_width": 1920, "native_height": 1080}
+            try:
+                with mock.patch.object(pc, "screenshot", return_value=meta), \
+                     mock.patch.object(pc, "open_path", return_value=True):
+                    buf = io.StringIO()
+                    with redirect_stdout(buf):
+                        pc.human_screenshot()
+                self.assertIn("Screenshot saved to", buf.getvalue())
+                self.assertIn("1920x1080", buf.getvalue())
+            finally:
+                if old is None:
+                    os.environ.pop("PC_PICTURES_DIR", None)
+                else:
+                    os.environ["PC_PICTURES_DIR"] = old
+
+    def test_doctor_human_summary(self):
+        report = {"ready": True, "checks": [
+            {"name": "screenshot", "ok": True, "detail": "spectacle", "required": True},
+            {"name": "state", "ok": True, "detail": "/tmp/state", "required": True},
+        ]}
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            pc.print_doctor_human(report)
+        text = buf.getvalue()
+        self.assertIn("Ready", text)
+        self.assertIn("pc-control screenshot", text)
 
 
 class CliTests(unittest.TestCase):
