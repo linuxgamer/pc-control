@@ -35,7 +35,7 @@ submitted yet.
 ```bash
 pipx install .
 # or, after a release:
-pipx install https://github.com/linuxgamer/pc-control/releases/download/v0.9.2/pc_control-0.9.2-py3-none-any.whl
+pipx install https://github.com/linuxgamer/pc-control/releases/download/v0.9.3/pc_control-0.9.3-py3-none-any.whl
 ```
 
 This gives you the `pc-control` command, but not the root services.
@@ -70,7 +70,7 @@ pc-control status
 `pause` is for humans; an agent can read `status` but cannot resume itself.
 
 If an agent tries to act while you are using the mouse/keyboard, it shows a
-desktop notification and waits 5 seconds before continuing. Run `pc-control
+desktop notification and waits 8 seconds before continuing. Run `pc-control
 pause` during that countdown to cancel.
 
 ## Files

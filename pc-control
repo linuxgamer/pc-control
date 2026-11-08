@@ -29,7 +29,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-VERSION = "0.9.2"
+VERSION = "0.9.3"
 APP = "pc-control"
 DEFAULT_MAX_WIDTH = 1280
 JPEG_QUALITY = 72
@@ -328,9 +328,9 @@ _TAKEOVER_USED = False
 
 def takeover_grace_ms() -> int:
     try:
-        value = int(os.environ.get("PC_TAKEOVER_GRACE_MS", "5000"))
+        value = int(os.environ.get("PC_TAKEOVER_GRACE_MS", "8000"))
     except ValueError:
-        value = 5000
+        value = 8000
     return max(0, value)
 
 

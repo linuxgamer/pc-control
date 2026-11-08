@@ -393,6 +393,10 @@ class TakeoverTests(TmpState):
         pc.check_gate()
         self.assertGreaterEqual(time.monotonic() - start, 0.35)
 
+    def test_default_grace_is_8s(self):
+        os.environ.pop("PC_TAKEOVER_GRACE_MS", None)
+        self.assertEqual(pc.takeover_grace_ms(), 8000)
+
     def test_zero_grace_still_blocks(self):
         os.environ["PC_TAKEOVER_GRACE_MS"] = "0"
         self.stamp(0.1)

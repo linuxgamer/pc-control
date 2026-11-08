@@ -86,7 +86,7 @@ pc-control resume                            # human only
 - Do not run `pause`/`resume` yourself; the human owns that channel.
 - The system install includes a humanwatch service. If **physical** mouse/keyboard
   input is within `PC_HUMAN_IDLE_MS` (default 800 ms), the first mutating call
-  sends a desktop notification and waits `PC_TAKEOVER_GRACE_MS` (default 5000)
+  sends a desktop notification and waits `PC_TAKEOVER_GRACE_MS` (default 8000)
   before acting. `pc-control pause` during that countdown cancels the action.
   No notification or delay occurs when the human is idle. After the warning the
   action proceeds; pause still wins. `error:"human_active"` only appears when

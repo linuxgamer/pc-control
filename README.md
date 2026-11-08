@@ -107,7 +107,7 @@ The pause command is meant to be run by a human. An agent can read `status` but
 cannot un-pause itself.
 
 If an agent tries to act while you are using the mouse/keyboard, it shows a
-desktop notification and waits `PC_TAKEOVER_GRACE_MS` (default 5 s) before
+desktop notification and waits `PC_TAKEOVER_GRACE_MS` (default 8 s) before
 continuing. Run `pc-control pause` during that countdown to cancel. When you are
 idle there is no warning and no delay.
 
@@ -177,7 +177,7 @@ agent ── shell ──► pc-control ──► spectacle / grim / gnome-scree
   title bar.
 - **Batch actions** — `run` chains shot → move → click → verify in one call.
 - **Human takeover** — pause, cursor re-verification, physical-input detection,
-  and a 5 s notification countdown before acting while you are active.
+  and an 8 s notification countdown before acting while you are active.
 - **Concurrency lease** — two agents coordinate; the second gets `lease_busy`.
 - **Portable** — KDE, GNOME, and wlroots capture backends; Wayland or X11.
 
@@ -273,7 +273,7 @@ live aiming.
 | `PC_OCR_MAX_CHARS` | `4000` | OCR text cap; `0` disables truncation |
 | `PC_OCR_PREPROCESS` | `auto` | `auto`, `invert`, or `none` for dark UIs |
 | `PC_HUMAN_IDLE_MS` | `800` | Consider physical input active this long |
-| `PC_TAKEOVER_GRACE_MS` | `5000` | Notification countdown before acting while active |
+| `PC_TAKEOVER_GRACE_MS` | `8000` | Notification countdown before acting while active |
 | `PC_TAKEOVER_NOTIFY` | `1` | Set `0` to disable the takeover notification |
 | `PC_LEASE_TTL_MS` | `15000` | Auto-lease lifetime; renewed on every mutating call |
 | `PC_AGENT_ID` | session/parent | Lease owner identity |

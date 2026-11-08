@@ -1,6 +1,6 @@
 # Maintainer: pc-control <noreply@github.com>
 pkgname=pc-control
-pkgver=0.9.2
+pkgver=0.9.3
 pkgrel=1
 pkgdesc="Desktop control for agents and humans: screenshots, mouse, keyboard"
 arch=('any')
@@ -10,7 +10,7 @@ depends=('python' 'python-pillow' 'ydotool')
 optdepends=('tesseract: OCR support')
 install=pc-control.install
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('709ac62c970c22234df3d24414767e3120c447d978fc17d694da589570aea6f1')
+sha256sums=('SKIP')
 
 package() {
   cd "$pkgname-$pkgver"

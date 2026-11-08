@@ -110,7 +110,7 @@ passed; then `verified` is `false`.
 
 The system install includes a humanwatch service. If physical input is younger
 than `PC_HUMAN_IDLE_MS` (default 800), the first mutating call sends a desktop
-notification and waits `PC_TAKEOVER_GRACE_MS` (default 5000) before acting. The
+notification and waits `PC_TAKEOVER_GRACE_MS` (default 8000) before acting. The
 human can run `pc-control pause` during the countdown to cancel. If the human is
 idle, there is no notification and no delay. `error:"human_active"` only appears
 with `PC_TAKEOVER_GRACE_MS=0`. The watcher writes only a timestamp to

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.3
+
+- Takeover grace default increased from 5 s to 8 s.
+- 65 tests.
+
 ## 0.9.2
 
 - Fixed takeover countdown race: it no longer exits early when the human stops
