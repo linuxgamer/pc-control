@@ -11,6 +11,6 @@ pkgbase = pc-control
 	depends = ydotool
 	optdepends = tesseract: OCR support
 	source = pc-control-0.8.0.tar.gz::https://github.com/linuxgamer/pc-control/archive/refs/tags/v0.8.0.tar.gz
-	sha256sums = SKIP
+	sha256sums = 0cddd61c95cfae54ad99e8a10c6a3b51a321be5f1d7fdf246ab988863c86d28e
 
 pkgname = pc-control
