@@ -37,7 +37,7 @@ Token strategy:
 2. Prefer `--region` around the control you need instead of the whole screen.
 3. Use the default compact shot for layout; request `--grid` only when picking coordinates precisely.
 4. `--window` is for reading an app; take a full shot before clicking because window pixels cannot be mapped to the screen.
-5. OCR is best-effort and depends on installed Tesseract languages. Set `--ocr-lang` or `PC_OCR_LANG`; mixed or Cyrillic UI can degrade or transliterate.
+5. OCR is best-effort and depends on installed Tesseract languages. Set `--ocr-lang` or `PC_OCR_LANG`; the helper maps `ru`→`rus`, `en`→`eng`, and returns `ocr_error` instead of guessing a wrong language. Mixed or Cyrillic UI can still transliterate.
 
 ## Coordinates
 
@@ -47,6 +47,7 @@ Token strategy:
 - `cursor` reports both `native` and `shot` coordinates in the latest shot's space.
 - `move` is closed-loop (measure → step → re-measure); it lands within ~2 px in ~1–3 s. A `warning` means it did not converge — take a shot and verify before clicking.
 - `move-rel DX DY` is raw relative motion (no mapping); use it for game mouse-look.
+- JSON fields: `move` → `screenshot_xy`, `target`, `cursor`, `error`, `attempts`; `cursor` → `native`, `shot`, `scale`, `offset`; `shot` → `path`, `width`, `height`, `scale_x`, `ocr_lang`.
 
 ## Safety
 

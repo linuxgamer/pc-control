@@ -127,6 +127,21 @@ class OcrLangTests(unittest.TestCase):
             with self.assertRaises(pc.PcError):
                 pc.pick_ocr_lang("eng")
 
+    def test_locale_alias_without_eng(self):
+        with mock.patch.object(pc, "ocr_languages", return_value=["afr", "osd", "rus"]), \
+             mock.patch.dict(os.environ, {"LANG": "ru_RU.UTF-8"}, clear=False):
+            self.assertEqual(pc.pick_ocr_lang(None), "rus")
+
+    def test_no_silent_first_language(self):
+        with mock.patch.object(pc, "ocr_languages", return_value=["afr"]), \
+             mock.patch.dict(os.environ, {"LANG": "ru_RU.UTF-8"}, clear=False):
+            with self.assertRaises(pc.PcError):
+                pc.pick_ocr_lang(None)
+
+    def test_requested_alias(self):
+        with mock.patch.object(pc, "ocr_languages", return_value=["eng"]):
+            self.assertEqual(pc.pick_ocr_lang("en"), "eng")
+
 
 class CliTests(unittest.TestCase):
     def test_version(self):

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.3
+
+- Fixed OCR language selection: locale aliases (`ru`→`rus`, `en`→`eng`) and no
+  silent fallback to an unrelated installed language; `shot` now reports
+  `ocr_lang` and returns `ocr_error` when nothing matches.
+- `doctor` returns structured `display` and `ocr_languages` fields.
+- Fixed the README checkout command and documented response field names.
+
 ## 0.3.2
 
 - Clarified the helper path (`./pc-control` in a checkout, `pc-control` when

@@ -74,7 +74,7 @@ For a checkout without installing:
 
 ```bash
 ./install.sh --local         # ./.pc-control/bin + ./.dsh/skills
-./pc-control/pc-control doctor
+./pc-control doctor
 ```
 
 Requirements: Python 3.9+, Pillow (compact/grid/region), one screenshot backend,
@@ -149,7 +149,7 @@ live aiming.
 | `move` reports a warning | Retry once; if it persists, take a shot and verify the pointer's effect. |
 | `no screenshot backend` | Install `spectacle`, `grim`, `gnome-screenshot`, `wayshot`, or `scrot`. |
 | `ydotool failed` | `pc-control doctor`; check `ydotoold` and the socket. |
-| OCR text looks wrong | Install the matching Tesseract language and pass `--ocr-lang`; mixed or Cyrillic UI can transliterate. |
+| OCR text looks wrong | Check `ocr_lang` in the shot JSON; install the matching Tesseract language and pass `--ocr-lang` (e.g. `rus`). Mixed/Cyrillic UI can still transliterate. |
 
 ## Configuration
 

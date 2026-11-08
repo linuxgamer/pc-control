@@ -26,7 +26,7 @@ import tempfile
 import time
 from pathlib import Path
 
-VERSION = "0.3.2"
+VERSION = "0.3.3"
 APP = "pc-control"
 DEFAULT_MAX_WIDTH = 1280
 JPEG_QUALITY = 72
@@ -309,26 +309,62 @@ def ocr_languages() -> list[str]:
     return [line for line in lines if line and " " not in line]
 
 
+LANG_ALIASES = {
+    "en": "eng", "ru": "rus", "de": "deu", "fr": "fra", "es": "spa", "it": "ita",
+    "pt": "por", "nl": "nld", "pl": "pol", "uk": "ukr", "cs": "ces", "sv": "swe",
+    "da": "dan", "fi": "fin", "no": "nor", "el": "ell", "he": "heb", "ar": "ara",
+    "hi": "hin", "ja": "jpn", "ko": "kor", "zh": "chi_sim", "vi": "vie", "th": "tha",
+    "tr": "tur",
+}
+
+
+def _resolve_ocr_lang(code: str | None, available: list[str]) -> str | None:
+    if not code:
+        return None
+    code = code.strip().lower()
+    if code in available:
+        return code
+    alias = LANG_ALIASES.get(code)
+    if alias and alias in available:
+        return alias
+    for candidate in available:
+        if len(code) == 2 and candidate.lower().startswith(code):
+            return candidate
+    return None
+
+
 def pick_ocr_lang(requested: str | None) -> str:
     available = ocr_languages()
+    if not available:
+        raise PcError("no tesseract language data installed",
+                      "Install tesseract-data-eng (or your language).")
     if requested:
-        if requested not in available:
+        resolved = _resolve_ocr_lang(requested, available)
+        if not resolved:
             raise PcError(
                 f"OCR language {requested!r} is not installed",
-                f"Available: {', '.join(available) or 'none'} (install tesseract-data-<lang>).",
+                f"Available: {', '.join(available)} (install tesseract-data-<lang>).",
             )
-        return requested
+        return resolved
     env = os.environ.get("PC_OCR_LANG")
-    if env and env in available:
-        return env
-    preferred = (os.environ.get("LANG") or "").split(".")[0].split("_")[0].lower()
-    for candidate in (preferred, "eng"):
-        if candidate and candidate in available:
-            return candidate
-    if available:
-        return available[0]
-    raise PcError("no tesseract language data installed",
-                  "Install tesseract-data-eng (or your language).")
+    if env:
+        resolved = _resolve_ocr_lang(env, available)
+        if not resolved:
+            raise PcError(
+                f"PC_OCR_LANG={env!r} is not installed",
+                f"Available: {', '.join(available)}.",
+            )
+        return resolved
+    base = (os.environ.get("LANG") or "").split(".")[0].split("_")[0].lower()
+    resolved = _resolve_ocr_lang(base, available)
+    if resolved:
+        return resolved
+    if "eng" in available:
+        return "eng"
+    raise PcError(
+        f"no OCR language matches locale {base!r}",
+        f"Available: {', '.join(available)}; pass --ocr-lang or set PC_OCR_LANG.",
+    )
 
 
 def add_grid(image, draw, step: int = 100) -> None:
@@ -370,9 +406,11 @@ def screenshot(kind: str = "full", out: str | None = None, region: list[int] | N
 
         text = None
         ocr_error = None
+        ocr_lang = None
         if ocr:
             try:
-                text = ocr_text(work, pick_ocr_lang(lang))
+                ocr_lang = pick_ocr_lang(lang)
+                text = ocr_text(work, ocr_lang)
             except PcError as exc:
                 ocr_error = str(exc)
                 if exc.hint:
@@ -428,6 +466,8 @@ def screenshot(kind: str = "full", out: str | None = None, region: list[int] | N
             meta["warning"] = warning
         if text is not None:
             meta["ocr"] = text
+        if ocr_lang is not None:
+            meta["ocr_lang"] = ocr_lang
         if ocr_error is not None:
             meta["ocr_error"] = ocr_error
         write_last_shot(meta)
@@ -755,7 +795,8 @@ def cmd_doctor() -> dict:
         "expected under an agent sandbox: /dev/uinput hidden; ydotool uses the host daemon",
         required=False)
     ready = all(c["ok"] for c in checks if c["required"])
-    return {"ok": True, "ready": ready, "checks": checks}
+    return {"ok": True, "ready": ready, "checks": checks,
+            "display": info, "ocr_languages": langs}
 
 
 def _has_pillow() -> bool:

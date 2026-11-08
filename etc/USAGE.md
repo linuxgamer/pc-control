@@ -59,9 +59,20 @@ Failure (exit 1):
 
 OCR is best-effort: it depends on the installed Tesseract languages
 (`--ocr-lang` / `PC_OCR_LANG`), and mixed or Cyrillic UI can transliterate.
+Locale codes are mapped (`ru`→`rus`, `en`→`eng`); if no language matches,
+the shot returns `ocr_error` instead of silently using an unrelated language.
 
-`shot --ocr` adds `ocr` (string) or `ocr_error`. A window shot has
-`"mappable":false` and cannot be used for coordinates.
+`shot --ocr` adds `ocr` (string), `ocr_lang` (the language actually used), or
+`ocr_error`. A window shot has `"mappable":false` and cannot be used for
+coordinates.
+
+Response fields:
+
+| Call | Fields |
+|---|---|
+| `shot` | `path`, `width`, `height`, `native_width`, `native_height`, `scale_x`, `scale_y`, `offset_x`, `offset_y`, `mappable`, `ocr`, `ocr_lang`, `ocr_error` |
+| `move` | `screenshot_xy` (input), `target` (native), `cursor` (actual), `error`, `attempts` |
+| `cursor` | `native`, `shot`, `scale`, `offset` (no `error`; it has no target) |
 
 ## Coordinate rule
 
