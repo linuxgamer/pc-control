@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1
+
+- `install.sh --system` now installs `pc-control` to `/usr/local/bin` and the
+  skill for the target user, so one sudo command covers PATH, skill, and host
+  services. `--no-cli` keeps the CLI where it is.
+- `--system --uninstall` removes the system CLI and the target user's skill.
+
 ## 0.6.0
 
 - Unified `install.sh`: user install by default, `--system` for uinput +

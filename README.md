@@ -52,10 +52,13 @@ read an image can drive it.
 ```bash
 git clone https://github.com/linuxgamer/pc-control.git
 cd pc-control
-./install.sh                 # ~/.local/bin/pc-control + ~/.dsh/skills/pc-control
-sudo ./install.sh --system   # once: uinput, ydotoold, humanwatch
+sudo ./install.sh --system   # /usr/local/bin + skill + uinput + ydotoold + humanwatch
 pc-control doctor
 ```
+
+`--system` installs the CLI to `/usr/local/bin`, the skill for the target user,
+and both host services. It needs root. Without root, `./install.sh` installs to
+`~/.local/bin` and `~/.dsh/skills`.
 
 If `pc-control` is not found afterwards, add `~/.local/bin` to PATH:
 
@@ -63,11 +66,11 @@ If `pc-control` is not found afterwards, add `~/.local/bin` to PATH:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-`install.sh` needs no sudo for the user install. `sudo ./install.sh --system`
-installs `ydotool` with your package manager (pacman/apt/dnf/zypper), loads
-`uinput`, adds the udev rule, and runs `ydotoold` plus the humanwatch service
-(opt out with `--no-humanwatch`). The socket is `/run/ydotool.sock`, owned by
-your user, mode 0600.
+`sudo ./install.sh --system` installs `ydotool` with your package manager
+(pacman/apt/dnf/zypper), loads `uinput`, adds the udev rule, and runs `ydotoold`
+plus the humanwatch service (opt out with `--no-humanwatch`). The socket is
+`/run/ydotool.sock`, owned by your user, mode 0600. `--no-cli` keeps the CLI
+where it is and only installs the services.
 
 From a checkout with pip or pipx:
 

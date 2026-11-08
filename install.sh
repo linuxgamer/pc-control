@@ -4,8 +4,9 @@
 #   ./install.sh                    # user: CLI + skill
 #   ./install.sh --local            # user: ./.pc-control/bin + ./.dsh/skills
 #   ./install.sh --no-skill         # user: CLI only
-#   sudo ./install.sh --system      # root: uinput + ydotool + ydotoold + humanwatch
+#   sudo ./install.sh --system      # root: /usr/local/bin + skill + uinput + ydotool + ydotoold + humanwatch
 #   sudo ./install.sh --system --no-humanwatch
+#   sudo ./install.sh --system --no-cli
 #   ./install.sh --uninstall        # remove the user install
 #   sudo ./install.sh --system --uninstall
 #
@@ -22,6 +23,7 @@ LOCAL=0
 SYSTEM=0
 UNINSTALL=0
 WATCH_HUMAN=1
+CLI_SYSTEM=1
 SOCKET="/run/ydotool.sock"
 TARGET_UID=""
 
@@ -39,6 +41,7 @@ while [[ $# -gt 0 ]]; do
     --local) LOCAL=1; BIN_DIR="$PWD/.pc-control/bin"; SKILL_DIR="$PWD/.dsh/skills"; shift ;;
     --system) SYSTEM=1; shift ;;
     --no-humanwatch) WATCH_HUMAN=0; shift ;;
+    --no-cli) CLI_SYSTEM=0; shift ;;
     --socket) SOCKET="${2:?--socket needs a path}"; shift 2 ;;
     --uid) TARGET_UID="${2:?--uid needs a number}"; shift 2 ;;
     --uninstall) UNINSTALL=1; shift ;;
@@ -114,6 +117,7 @@ if ! command -v systemctl >/dev/null 2>&1; then
   exit 1
 fi
 
+CLI_DEST=/usr/local/bin/pc-control
 YDOTOOLD_UNIT=/etc/systemd/system/ydotoold.service
 WATCH_UNIT=/etc/systemd/system/pc-control-humanwatch.service
 WATCH_LIB=/usr/local/lib/pc-control
@@ -125,9 +129,21 @@ if [[ ${UNINSTALL} -eq 1 ]]; then
   systemctl disable --now ydotoold.service 2>/dev/null || true
   rm -f "${WATCH_UNIT}" "${YDOTOOLD_UNIT}" "${WATCH_LIB}/humanwatch.py" "${RULE}" "${MODULE_CONF}"
   rmdir "${WATCH_LIB}" 2>/dev/null || true
+  rm -f "${CLI_DEST}"
+  UNINSTALL_UID="${TARGET_UID:-}"
+  if [[ -z "${UNINSTALL_UID}" && -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+    UNINSTALL_UID="$(id -u "${SUDO_USER}")"
+  fi
+  if [[ -n "${UNINSTALL_UID}" ]]; then
+    UNINSTALL_HOME="$(getent passwd "${UNINSTALL_UID}" 2>/dev/null | cut -d: -f6)"
+    if [[ -n "${UNINSTALL_HOME}" ]]; then
+      rm -f "${UNINSTALL_HOME}/.dsh/skills/pc-control/SKILL.md"
+      rmdir "${UNINSTALL_HOME}/.dsh/skills/pc-control" 2>/dev/null || true
+    fi
+  fi
   systemctl daemon-reload 2>/dev/null || true
   udevadm control --reload-rules 2>/dev/null || true
-  echo "removed pc-control system services (packages left installed)"
+  echo "removed pc-control system services, ${CLI_DEST}, and the user skill"
   exit 0
 fi
 
@@ -144,6 +160,20 @@ if ! [[ "${TARGET_UID}" =~ ^[0-9]+$ ]] || ! id "${TARGET_UID}" >/dev/null 2>&1; 
   exit 1
 fi
 TARGET_GID="$(id -g "${TARGET_UID}")"
+TARGET_HOME="$(getent passwd "${TARGET_UID}" 2>/dev/null | cut -d: -f6)"
+
+if [[ ${CLI_SYSTEM} -eq 1 ]]; then
+  echo "==> ${CLI_DEST}"
+  install -Dm755 "${HERE}/pc-control" "${CLI_DEST}"
+fi
+if [[ ${INSTALL_SKILL} -eq 1 ]]; then
+  if [[ -n "${TARGET_HOME}" ]]; then
+    install -Dm644 "${HERE}/etc/SKILL.md" "${TARGET_HOME}/.dsh/skills/pc-control/SKILL.md"
+    chown -R "${TARGET_UID}:${TARGET_GID}" "${TARGET_HOME}/.dsh/skills/pc-control" 2>/dev/null || true
+  else
+    echo "warning: cannot resolve the home directory for uid ${TARGET_UID}; skill not installed." >&2
+  fi
+fi
 
 echo "==> uinput"
 if ! modprobe uinput 2>/dev/null; then
@@ -255,6 +285,7 @@ if [[ ${WATCH_HUMAN} -eq 1 ]]; then
   echo "    privacy: only a timestamp is written to /run/pc-control/human-${TARGET_UID}"
 fi
 echo
+echo
 echo "Next, as the desktop user:"
-echo "    ./install.sh              # if the CLI is not installed yet"
 echo "    pc-control doctor"
+echo "    pc-control status"
