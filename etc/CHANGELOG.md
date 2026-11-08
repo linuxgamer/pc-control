@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.2
+
+- Docs are agent-first again; human screenshots are delegated to Spectacle.
+- Removed remaining screenshot/menu emphasis from README, HUMAN, installer output.
+- 51 unit tests.
+
 ## 0.8.1
 
 - Removed the `.desktop` menu-entry creation; screenshots remain a CLI command.

@@ -102,7 +102,6 @@ if [[ ${SYSTEM} -eq 0 ]]; then
   esac
   echo
   echo "try:"
-  echo "  pc-control screenshot"
   echo "  pc-control doctor"
   echo
   echo "input (click/type) needs the host services:"
@@ -303,6 +302,5 @@ fi
 echo
 echo
 echo "Try:"
-echo "    pc-control screenshot"
 echo "    pc-control doctor"
 echo "    pc-control status"

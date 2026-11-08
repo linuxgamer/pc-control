@@ -1,7 +1,8 @@
 # pc-control for humans
 
-A command-line tool for taking screenshots and (optionally) letting an AI use
-your desktop. You do not need to know JSON to take a screenshot.
+`pc-control` is a desktop-control tool for AI agents. For ordinary screenshots,
+use **Spectacle** — that is what it is for. `pc-control` is for automating
+clicks, typing, and window focus, and for pausing an agent that is doing so.
 
 ## Install
 
@@ -14,12 +15,8 @@ sudo ./install.sh --system
 ```
 
 This installs `pc-control` and the host services needed for mouse/keyboard
-control. If you only want screenshots, the
-screenshot part works with the user-level install too:
-
-```bash
-./install.sh          # ~/.local/bin + ~/.dsh/skills, no root
-```
+control. Without root, `./install.sh` installs the CLI to `~/.local/bin`; the
+input services still need the system step.
 
 ### Arch Linux
 
@@ -29,43 +26,37 @@ makepkg -si
 sudo /usr/share/pc-control/install.sh --system --no-cli
 ```
 
-The second command is the one-time host setup; the package itself is a normal
-Arch package. The PKGBUILD is AUR-ready but not submitted yet.
+The second command is the one-time host setup; the PKGBUILD is AUR-ready but not
+submitted yet.
 
 ### Python / pipx (CLI only)
 
 ```bash
-pipx install .        # from a checkout
+pipx install .
 # or, after a release:
-pipx install https://github.com/linuxgamer/pc-control/releases/download/v0.8.1/pc_control-0.8.1-py3-none-any.whl
+pipx install https://github.com/linuxgamer/pc-control/releases/download/v0.8.2/pc_control-0.8.2-py3-none-any.whl
 ```
 
-This gives you the `pc-control` command. It does **not** install the root
-services; run `sudo ./install.sh --system` from a checkout for those.
+This gives you the `pc-control` command, but not the root services.
 
-## First screenshot
+## Check
 
 ```bash
-pc-control screenshot
+pc-control doctor
 ```
 
-It saves to your XDG Pictures folder (for example
-`~/Изображения/pc-control/Screenshot-….png` or
-`~/Pictures/pc-control/Screenshot-….png`), opens it, and prints one line. `--no-open` skips the viewer; `--out PATH` saves elsewhere; `--region X Y
-W H` crops.
-
+Plain English on a terminal.
 
 ## Click and type
 
 ```bash
-pc-control shot                      # prints a path + coordinates
+pc-control shot                      # agent observation: path + coordinates
 pc-control click left --at 640 360
 pc-control type "hello"
 pc-control key ctrl+s
 ```
 
-Coordinates are pixels in the image returned by `shot`. Take a fresh `shot`
-before clicking if the screen changed.
+Coordinates are pixels in the image returned by `shot`.
 
 ## Pause an AI
 
@@ -80,36 +71,17 @@ Physical mouse/keyboard use also makes the agent wait briefly.
 
 ## Files
 
-- Screenshots: your XDG Pictures folder + `/pc-control/`
-- Agent state: `./.pc-control/` in the directory where the agent runs
+Agent state lives in `./.pc-control/` in the directory where the agent runs.
+Screenshots for humans belong in Spectacle, not here.
 
-## Check and fix
-
-```bash
-pc-control doctor
-```
-
-Plain English on a terminal. Common fixes:
+## Fix
 
 | Problem | Fix |
 |---|---|
 | `command not found` | Add `~/.local/bin` to PATH, or open a new terminal. |
-| `cannot write to the Pictures folder` | Use `--out ~/Desktop/shot.png` or set `PC_PICTURES_DIR`. |
-| Viewer did not open | Add `--no-open`; the path is printed. |
 | `state_temporary` | Run from home/workspace, or set `PC_STATE_DIR=$HOME/.pc-control`. |
 | Clicking/typing does nothing | `sudo ./install.sh --system`, then `pc-control doctor`. |
-| No screenshot backend | Install `spectacle`, `grim`, or `gnome-screenshot`. |
-
-## Update / uninstall
-
-```bash
-git pull
-./install.sh
-sudo ./install.sh --system
-
-./install.sh --uninstall
-sudo ./install.sh --system --uninstall
-```
+| `no screenshot backend` | Install `spectacle` or `grim` for the agent's observations. |
 
 ## Privacy
 

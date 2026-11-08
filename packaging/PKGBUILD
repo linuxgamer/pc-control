@@ -1,6 +1,6 @@
 # Maintainer: pc-control <noreply@github.com>
 pkgname=pc-control
-pkgver=0.8.1
+pkgver=0.8.2
 pkgrel=1
 pkgdesc="Desktop control for agents and humans: screenshots, mouse, keyboard"
 arch=('any')

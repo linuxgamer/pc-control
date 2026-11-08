@@ -3,27 +3,16 @@
 [![test](https://github.com/linuxgamer/pc-control/actions/workflows/test.yml/badge.svg)](https://github.com/linuxgamer/pc-control/actions/workflows/test.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Desktop control for agents (and humans) on Linux: screenshots,
-mouse, keyboard, window focus, and app switching.
+Desktop control for agents on Linux: screenshots for observation, mouse,
+keyboard, window focus, and app switching.
 
-## Just want a screenshot?
-
-Once installed (see below):
-
-```bash
-pc-control screenshot
-```
-
-Saves a full-resolution PNG to your XDG Pictures folder
-(`~/Изображения/pc-control/…` or `~/Pictures/pc-control/…` depending on
-`user-dirs.dirs`), opens it in your image viewer, and prints one sentence. Add `--no-open` to skip the
-viewer or `--json` for a machine-readable result. The installer also adds a
+This is not a screenshot app. For ordinary human screenshots use **Spectacle**;
+`pc-control` is for letting an agent operate the desktop.
 
 
 ## What is this?
 
-- **For humans:** a command-line way to take screenshots and drive your own
-  desktop — useful when you want to script a click or let an assistant help.
+- **For humans:** a way to pause an agent, or to script a click/keystroke.
 - **For agents:** one JSON object per call, with compact screenshots, automatic
   coordinate mapping, OCR, batch actions, a human-takeover pause, and a lease
   so two agents do not fight over the mouse.
@@ -41,7 +30,7 @@ in [`etc/USAGE.md`](etc/USAGE.md) and [`etc/SKILL.md`](etc/SKILL.md).
 git clone https://github.com/linuxgamer/pc-control.git
 cd pc-control
 sudo ./install.sh --system
-pc-control screenshot
+pc-control doctor
 ```
 
 Requirements: Python 3.9+, Pillow, one screenshot backend, and `ydotool` +
@@ -55,7 +44,7 @@ The humanwatch service is optional (`--no-humanwatch`) and writes only a
 timestamp — never key contents.
 
 Without root, `./install.sh` installs the CLI to `~/.local/bin` and the skill to
-`~/.dsh/skills`. Screenshots work; clicking/typing need the system step.
+`~/.dsh/skills`. The CLI works; clicking/typing need the system step.
 
 If `pc-control` is not found afterwards, add `~/.local/bin` to PATH:
 
@@ -89,15 +78,6 @@ sudo ./install.sh --system --uninstall
 
 ## Use it yourself
 
-### Take a screenshot
-
-```bash
-pc-control screenshot                  # full PNG, opens viewer
-pc-control screenshot --no-open        # just save it
-pc-control screenshot --region 0 0 800 600
-pc-control screenshot --out ~/Desktop/shot.png
-```
-
 ### Click and type
 
 Coordinates are pixels from a `pc-control shot` image (or from the
@@ -124,8 +104,7 @@ cannot un-pause itself.
 
 ### Where are my files?
 
-- Human screenshots: your XDG Pictures folder + `/pc-control/`
-- Agent screenshots and state: `./.pc-control/` (the current directory)
+Agent screenshots and state live in `./.pc-control/` (the current directory).
 
 ### Check it
 
@@ -250,7 +229,6 @@ live aiming.
 | Symptom | Fix |
 |---|---|
 | `pc-control: command not found` | Add `~/.local/bin` to PATH, or open a new terminal. |
-| `cannot write to the Pictures folder` | Use `pc-control screenshot --out ~/Desktop/shot.png` or set `PC_PICTURES_DIR`. |
 | The image viewer did not open | Add `--no-open`; the path is printed. Open it manually. |
 | `error:"state_temporary"` | Run from your home/workspace, or set `PC_STATE_DIR=$HOME/.pc-control`. |
 | Clicking/typing does nothing | Run `sudo ./install.sh --system`; check `pc-control doctor`. |
@@ -287,7 +265,6 @@ live aiming.
 | `PC_LEASE_TTL_MS` | `15000` | Auto-lease lifetime; renewed on every mutating call |
 | `PC_AGENT_ID` | session/parent | Lease owner identity |
 | `PC_LEASE_DISABLED` | unset | `1` bypasses leases (single-agent debugging) |
-| `PC_PICTURES_DIR` | XDG Pictures | Human screenshot root |
 | `YDOTOOL_SOCKET` | `/etc/pc-control/socket` or `/run/ydotool.sock` | Daemon socket |
 
 ## Development
