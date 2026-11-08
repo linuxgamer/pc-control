@@ -14,10 +14,11 @@ Once installed (see below):
 pc-control screenshot
 ```
 
-Saves a full-resolution PNG to `~/Pictures/pc-control/Screenshot-….png`, opens it
-in your image viewer, and prints one sentence. Add `--no-open` to skip the
+Saves a full-resolution PNG to your XDG Pictures folder
+(`~/Изображения/pc-control/…` or `~/Pictures/pc-control/…` depending on
+`user-dirs.dirs`), opens it in your image viewer, and prints one sentence. Add `--no-open` to skip the
 viewer or `--json` for a machine-readable result. The installer also adds a
-**Take Screenshot** entry to your application menu.
+
 
 ## What is this?
 
@@ -48,7 +49,6 @@ Requirements: Python 3.9+, Pillow, one screenshot backend, and `ydotool` +
 
 - `pc-control` to `/usr/local/bin`
 - the skill for your user under `~/.dsh/skills`
-- a **Take Screenshot** menu entry
 - `uinput`, the udev rule, `ydotoold`, and the humanwatch service
 
 The humanwatch service is optional (`--no-humanwatch`) and writes only a
@@ -124,9 +124,8 @@ cannot un-pause itself.
 
 ### Where are my files?
 
-- Human screenshots: `~/Pictures/pc-control/`
+- Human screenshots: your XDG Pictures folder + `/pc-control/`
 - Agent screenshots and state: `./.pc-control/` (the current directory)
-- The menu entry runs `pc-control screenshot`, so it saves to Pictures.
 
 ### Check it
 
@@ -288,7 +287,7 @@ live aiming.
 | `PC_LEASE_TTL_MS` | `15000` | Auto-lease lifetime; renewed on every mutating call |
 | `PC_AGENT_ID` | session/parent | Lease owner identity |
 | `PC_LEASE_DISABLED` | unset | `1` bypasses leases (single-agent debugging) |
-| `PC_PICTURES_DIR` | `~/Pictures` | Human screenshot root |
+| `PC_PICTURES_DIR` | XDG Pictures | Human screenshot root |
 | `YDOTOOL_SOCKET` | `/etc/pc-control/socket` or `/run/ydotool.sock` | Daemon socket |
 
 ## Development

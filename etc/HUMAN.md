@@ -13,8 +13,8 @@ cd pc-control
 sudo ./install.sh --system
 ```
 
-This installs `pc-control`, a **Take Screenshot** menu entry, and the host
-services needed for mouse/keyboard control. If you only want screenshots, the
+This installs `pc-control` and the host services needed for mouse/keyboard
+control. If you only want screenshots, the
 screenshot part works with the user-level install too:
 
 ```bash
@@ -37,7 +37,7 @@ Arch package. The PKGBUILD is AUR-ready but not submitted yet.
 ```bash
 pipx install .        # from a checkout
 # or, after a release:
-pipx install https://github.com/linuxgamer/pc-control/releases/download/v0.8.0/pc_control-0.8.0-py3-none-any.whl
+pipx install https://github.com/linuxgamer/pc-control/releases/download/v0.8.1/pc_control-0.8.1-py3-none-any.whl
 ```
 
 This gives you the `pc-control` command. It does **not** install the root
@@ -49,11 +49,11 @@ services; run `sudo ./install.sh --system` from a checkout for those.
 pc-control screenshot
 ```
 
-It saves to `~/Pictures/pc-control/Screenshot-….png`, opens it, and prints one
-line. `--no-open` skips the viewer; `--out PATH` saves elsewhere; `--region X Y
+It saves to your XDG Pictures folder (for example
+`~/Изображения/pc-control/Screenshot-….png` or
+`~/Pictures/pc-control/Screenshot-….png`), opens it, and prints one line. `--no-open` skips the viewer; `--out PATH` saves elsewhere; `--region X Y
 W H` crops.
 
-You can also use the **Take Screenshot** menu entry.
 
 ## Click and type
 
@@ -80,9 +80,8 @@ Physical mouse/keyboard use also makes the agent wait briefly.
 
 ## Files
 
-- Screenshots: `~/Pictures/pc-control/`
+- Screenshots: your XDG Pictures folder + `/pc-control/`
 - Agent state: `./.pc-control/` in the directory where the agent runs
-- Menu entry: “Take Screenshot”
 
 ## Check and fix
 

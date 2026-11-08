@@ -434,6 +434,28 @@ class HumanModeTests(unittest.TestCase):
                 else:
                     os.environ["PC_PICTURES_DIR"] = old
 
+    def test_xdg_user_dirs_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            config = Path(tmp) / "config"
+            home.mkdir()
+            config.mkdir()
+            (config / "user-dirs.dirs").write_text(
+                'XDG_PICTURES_DIR="$HOME/Изображения"\n', encoding="utf-8")
+            with mock.patch.dict(os.environ, {
+                "HOME": str(home), "XDG_CONFIG_HOME": str(config),
+            }, clear=False), mock.patch.object(pc, "which", return_value=None):
+                os.environ.pop("PC_PICTURES_DIR", None)
+                os.environ.pop("XDG_PICTURES_DIR", None)
+                path = pc.pictures_dir()
+            self.assertEqual(path, home / "Изображения" / "pc-control")
+
+    def test_xdg_pictures_env_wins(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(os.environ, {"XDG_PICTURES_DIR": tmp}, clear=False):
+                os.environ.pop("PC_PICTURES_DIR", None)
+                self.assertEqual(pc.pictures_dir(), Path(tmp) / "pc-control")
+
     def test_human_screenshot_prints_one_line(self):
         with tempfile.TemporaryDirectory() as tmp:
             old = os.environ.get("PC_PICTURES_DIR")

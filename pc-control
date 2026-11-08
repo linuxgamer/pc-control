@@ -19,6 +19,7 @@ import json
 import os
 import random
 import re
+import shlex
 import shutil
 import struct
 import subprocess
@@ -28,7 +29,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-VERSION = "0.8.0"
+VERSION = "0.8.1"
 APP = "pc-control"
 DEFAULT_MAX_WIDTH = 1280
 JPEG_QUALITY = 72
@@ -853,10 +854,39 @@ def wants_human(args) -> bool:
     return sys.stdout.isatty()
 
 
+def configured_pictures_dir() -> Path:
+    """Follow the XDG user-dirs PICTURES setting, with a sane fallback."""
+    explicit = os.environ.get("PC_PICTURES_DIR") or os.environ.get("XDG_PICTURES_DIR")
+    if explicit:
+        return Path(explicit).expanduser()
+
+    helper = which("xdg-user-dir")
+    if helper:
+        result = run([helper, "PICTURES"], timeout=3).stdout.strip()
+        if result:
+            return Path(result).expanduser()
+
+    config_home = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config"))
+    user_dirs = config_home / "user-dirs.dirs"
+    try:
+        for line in user_dirs.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line.startswith("XDG_PICTURES_DIR="):
+                continue
+            try:
+                value = shlex.split(line.split("=", 1)[1])[0]
+            except (ValueError, IndexError):
+                continue
+            value = os.path.expandvars(value)
+            if value:
+                return Path(value).expanduser()
+    except OSError:
+        pass
+    return Path.home() / "Pictures"
+
+
 def pictures_dir() -> Path:
-    base = os.environ.get("PC_PICTURES_DIR") or os.environ.get("XDG_PICTURES_DIR")
-    root = Path(base).expanduser() if base else Path.home() / "Pictures"
-    path = root / "pc-control"
+    path = configured_pictures_dir() / "pc-control"
     try:
         path.mkdir(parents=True, exist_ok=True)
     except OSError as exc:

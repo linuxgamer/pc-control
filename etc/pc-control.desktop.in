@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Take Screenshot
-Comment=Capture the screen with pc-control
-Exec=@EXEC@ screenshot
-Icon=camera-photo
-Terminal=false
-Categories=Utility;
-Keywords=screenshot;capture;pc-control;

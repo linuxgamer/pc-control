@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.1
+
+- Removed the `.desktop` menu-entry creation; screenshots remain a CLI command.
+- Human screenshots now follow the XDG Pictures setting from
+  `~/.config/user-dirs.dirs` / `xdg-user-dir`, so `~/Изображения` works.
+- Added tests for XDG Pictures resolution.
+
 ## 0.8.0
 
 - Human mode: `pc-control screenshot` saves a full-resolution PNG to

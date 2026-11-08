@@ -3,8 +3,7 @@
 #
 #   ./install.sh                    # user: CLI + skill
 #   ./install.sh --local            # user: ./.pc-control/bin + ./.dsh/skills
-#   ./install.sh --no-skill         # user: CLI + menu, no skill
-#   ./install.sh --no-desktop       # no "Take Screenshot" menu entry
+#   ./install.sh --no-skill         # user: CLI only
 #   sudo ./install.sh --system      # root: /usr/local/bin + skill + uinput + ydotool + ydotoold + humanwatch
 #   sudo ./install.sh --system --no-humanwatch
 #   sudo ./install.sh --system --no-cli
@@ -19,9 +18,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PREFIX="${PREFIX:-$HOME/.local}"
 BIN_DIR="${PREFIX}/bin"
 SKILL_DIR="${DSH_HOME:-$HOME/.dsh}/skills"
-APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 INSTALL_SKILL=1
-INSTALL_DESKTOP=1
 LOCAL=0
 SYSTEM=0
 UNINSTALL=0
@@ -41,9 +38,7 @@ while [[ $# -gt 0 ]]; do
     --bin-dir) BIN_DIR="${2:?--bin-dir needs a path}"; shift 2 ;;
     --skill-dir) SKILL_DIR="${2:?--skill-dir needs a path}"; shift 2 ;;
     --no-skill) INSTALL_SKILL=0; shift ;;
-    --no-desktop) INSTALL_DESKTOP=0; shift ;;
-    --no-desktop) INSTALL_DESKTOP=0; shift ;;
-    --local) LOCAL=1; INSTALL_DESKTOP=0; BIN_DIR="$PWD/.pc-control/bin"; SKILL_DIR="$PWD/.dsh/skills"; shift ;;
+    --local) LOCAL=1; BIN_DIR="$PWD/.pc-control/bin"; SKILL_DIR="$PWD/.dsh/skills"; shift ;;
     --system) SYSTEM=1; shift ;;
     --no-humanwatch) WATCH_HUMAN=0; shift ;;
     --no-cli) CLI_SYSTEM=0; shift ;;
@@ -67,9 +62,9 @@ if [[ ${SYSTEM} -eq 0 ]]; then
   if [[ ${UNINSTALL} -eq 1 ]]; then
     rm -f "${BIN_DIR}/pc-control"
     rm -f "${SKILL_DIR}/pc-control/SKILL.md"
-    rm -f "${APPS_DIR}/pc-control.desktop"
+    rm -f "${XDG_DATA_HOME:-$HOME/.local/share}/applications/pc-control.desktop"
     rmdir "${SKILL_DIR}/pc-control" 2>/dev/null || true
-    echo "removed ${BIN_DIR}/pc-control, the skill, and the menu entry"
+    echo "removed ${BIN_DIR}/pc-control and the skill"
     exit 0
   fi
   command -v python3 >/dev/null 2>&1 || {
@@ -77,19 +72,13 @@ if [[ ${SYSTEM} -eq 0 ]]; then
     exit 1
   }
   install -Dm755 "${HERE}/pc-control" "${BIN_DIR}/pc-control"
+  rm -f "${XDG_DATA_HOME:-$HOME/.local/share}/applications/pc-control.desktop"
   if [[ ${INSTALL_SKILL} -eq 1 ]]; then
     install -Dm644 "${HERE}/etc/SKILL.md" "${SKILL_DIR}/pc-control/SKILL.md"
-  fi
-  if [[ ${INSTALL_DESKTOP} -eq 1 ]]; then
-    install -d "${APPS_DIR}"
-    sed "s|@EXEC@|${BIN_DIR}/pc-control|g" "${HERE}/etc/pc-control.desktop.in" \
-      > "${APPS_DIR}/pc-control.desktop"
-    chmod 644 "${APPS_DIR}/pc-control.desktop"
   fi
   echo "installed:"
   echo "  ${BIN_DIR}/pc-control"
   [[ ${INSTALL_SKILL} -eq 1 ]] && echo "  ${SKILL_DIR}/pc-control/SKILL.md"
-  [[ ${INSTALL_DESKTOP} -eq 1 ]] && echo "  ${APPS_DIR}/pc-control.desktop (menu: Take Screenshot)"
   echo
   echo "checks:"
   command -v ydotool >/dev/null 2>&1 \
@@ -189,6 +178,7 @@ if [[ ${CLI_SYSTEM} -eq 1 ]]; then
   echo "==> ${CLI_DEST}"
   install -Dm755 "${HERE}/pc-control" "${CLI_DEST}"
 fi
+rm -f /usr/share/applications/pc-control.desktop
 install -d /etc/pc-control
 printf '%s\n' "${SOCKET}" > "${SOCKET_CONF}"
 chmod 644 "${SOCKET_CONF}"
@@ -199,18 +189,6 @@ if [[ ${INSTALL_SKILL} -eq 1 ]]; then
   else
     echo "warning: cannot resolve the home directory for uid ${TARGET_UID}; skill not installed." >&2
   fi
-fi
-
-if [[ ${INSTALL_DESKTOP} -eq 1 ]]; then
-  if [[ ${CLI_SYSTEM} -eq 1 ]]; then
-    DESKTOP_EXEC="${CLI_DEST}"
-  else
-    DESKTOP_EXEC="$(command -v pc-control || echo /usr/local/bin/pc-control)"
-  fi
-  install -d /usr/share/applications
-  sed "s|@EXEC@|${DESKTOP_EXEC}|g" "${HERE}/etc/pc-control.desktop.in" \
-    > /usr/share/applications/pc-control.desktop
-  chmod 644 /usr/share/applications/pc-control.desktop
 fi
 
 echo "==> uinput"

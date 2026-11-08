@@ -6,7 +6,7 @@ question is only who runs it.
 
 | Method | Command | Scope |
 |---|---|---|
-| Script (any distro) | `sudo ./install.sh --system` | CLI + skill + menu + services |
+| Script (any distro) | `sudo ./install.sh --system` | CLI + skill + services |
 | Arch PKGBUILD | `makepkg -si` then `sudo /usr/share/pc-control/install.sh --system --no-cli` | Package-managed files + one-time setup |
 | pipx / PyPI | `pipx install .` | CLI only |
 | Flatpak / AppImage | not recommended | Needs `/dev/uinput` and a root daemon |
@@ -20,8 +20,8 @@ sudo /usr/share/pc-control/install.sh --system --no-cli
 pc-control screenshot
 ```
 
-The package installs `/usr/bin/pc-control`, the human/agent docs, the menu entry,
-and `install.sh` under `/usr/share/pc-control`. The second command is the
+The package installs `/usr/bin/pc-control`, the human/agent docs, and
+`install.sh` under `/usr/share/pc-control`. The second command is the
 one-time privileged setup; it installs the skill, `ydotoold`, and `humanwatch`.
 
 `sha256sums` is `SKIP` in the repo template. Before uploading to the AUR, run
@@ -45,11 +45,11 @@ pipx install pc-control
 Until it is published, the release wheel works:
 
 ```bash
-pipx install https://github.com/linuxgamer/pc-control/releases/download/v0.8.0/pc_control-0.8.0-py3-none-any.whl
+pipx install https://github.com/linuxgamer/pc-control/releases/download/v0.8.1/pc_control-0.8.1-py3-none-any.whl
 ```
 
-The wheel contains the CLI only. The skill, menu entry, and services still need
-the checkout/installer. Do not publish a wheel that silently omits the root
+The wheel contains the CLI only. The skill and services still need the
+checkout/installer. Do not publish a wheel that silently omits the root
 setup without saying so.
 
 ## Debian / RPM
