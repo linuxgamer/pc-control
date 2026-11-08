@@ -1,6 +1,6 @@
 pkgbase = pc-control
 	pkgdesc = Desktop control for agents and humans: screenshots, mouse, keyboard
-	pkgver = 0.9.1
+	pkgver = 0.9.2
 	pkgrel = 1
 	url = https://github.com/linuxgamer/pc-control
 	install = pc-control.install
@@ -10,7 +10,7 @@ pkgbase = pc-control
 	depends = python-pillow
 	depends = ydotool
 	optdepends = tesseract: OCR support
-	source = pc-control-0.9.1.tar.gz::https://github.com/linuxgamer/pc-control/archive/refs/tags/v0.9.1.tar.gz
-	sha256sums = 62bb21076bf5ccc47a2bf95c113c5027c318774f53735a351742a8d78006e965
+	source = pc-control-0.9.2.tar.gz::https://github.com/linuxgamer/pc-control/archive/refs/tags/v0.9.2.tar.gz
+	sha256sums = 709ac62c970c22234df3d24414767e3120c447d978fc17d694da589570aea6f1
 
 pkgname = pc-control
