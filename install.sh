@@ -118,6 +118,11 @@ if [[ ${SYSTEM} -eq 0 ]]; then
   echo
   echo "input (click/type) needs the host services:"
   echo "  sudo ${HERE}/install.sh --system"
+  SYSTEM_CLI="$(command -v pc-control 2>/dev/null || true)"
+  if [[ -n "${SYSTEM_CLI}" && "${SYSTEM_CLI}" != "${BIN_DIR}/pc-control" ]]; then
+    echo
+    echo "note: ${SYSTEM_CLI} shadows this install; run the --system command to update it"
+  fi
   exit 0
 fi
 

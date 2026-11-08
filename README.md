@@ -8,7 +8,7 @@ mouse, keyboard, window focus, and app switching.
 
 ## Just want a screenshot?
 
-Once installed (one command, below):
+Once installed (see below):
 
 ```bash
 pc-control screenshot
@@ -34,7 +34,7 @@ in [`etc/USAGE.md`](etc/USAGE.md) and [`etc/SKILL.md`](etc/SKILL.md).
 
 ## Install
 
-### One command (any distro)
+### Recommended (any distro)
 
 ```bash
 git clone https://github.com/linuxgamer/pc-control.git
@@ -72,7 +72,7 @@ export PATH="$HOME/.local/bin:$PATH"
 | Method | Command | What you get |
 |---|---|---|
 | Script | `sudo ./install.sh --system` | Everything, any distro |
-| Arch package | `cd packaging && makepkg -si` | AUR-ready PKGBUILD; one-time service setup |
+| Arch package | `cd packaging && makepkg -si` | AUR-ready PKGBUILD (not published yet); one-time service setup |
 | pipx | `pipx install .` | CLI only, isolated; no services |
 | Released wheel | `pipx install <wheel-url>` | CLI only; no services |
 
