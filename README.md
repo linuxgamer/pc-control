@@ -57,6 +57,12 @@ sudo ./install.sh --system   # once: uinput, ydotoold, humanwatch
 pc-control doctor
 ```
 
+If `pc-control` is not found afterwards, add `~/.local/bin` to PATH:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
 `install.sh` needs no sudo for the user install. `sudo ./install.sh --system`
 installs `ydotool` with your package manager (pacman/apt/dnf/zypper), loads
 `uinput`, adds the udev rule, and runs `ydotoold` plus the humanwatch service
@@ -71,11 +77,11 @@ pipx install .          # isolated, puts pc-control on PATH
 python3 -m pip install --user .
 ```
 
-For a checkout without installing:
+For development inside a checkout (not the normal install):
 
 ```bash
 ./install.sh --local         # ./.pc-control/bin + ./.dsh/skills
-./pc-control doctor
+./.pc-control/bin/pc-control doctor
 ```
 
 Requirements: Python 3.9+, Pillow (compact/grid/region), one screenshot backend,

@@ -10,7 +10,7 @@ Linux desktop through it. This file is the generic integration guide.
 pc-control doctor
 ```
 
-Run `./pc-control` from a checkout, or `pc-control` when installed.
+Run `pc-control` when it is on PATH, otherwise `~/.local/bin/pc-control`; in a source checkout `./pc-control` also works.
 
 `ready: true` means screenshots and input are available. If `ydotool` /
 `ydotoold` fail, a human must run `sudo ./install.sh --system` once. Never run sudo

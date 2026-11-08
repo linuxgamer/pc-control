@@ -5,7 +5,7 @@ description: Use when the user asks to see, click, type in, or otherwise operate
 
 # PC control
 
-Helper: `./pc-control` from the repo root, or `pc-control` once installed. Examples below use `pc-control`; prepend `./` in a checkout. Every call prints **one JSON object**; non-zero exit means failure. Screenshots come from the compositor; mouse/keyboard come from `ydotool` (uinput), which games see as a real device.
+Helper: `pc-control` if it is on PATH; otherwise `~/.local/bin/pc-control` (the installer puts it there). In a source checkout you can also use `./pc-control`. Examples below use `pc-control`; substitute the full path if needed. Every call prints **one JSON object**; non-zero exit means failure. Screenshots come from the compositor; mouse/keyboard come from `ydotool` (uinput), which games see as a real device.
 
 ## Before acting
 
