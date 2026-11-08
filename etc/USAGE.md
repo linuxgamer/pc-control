@@ -1,7 +1,8 @@
 # Using pc-control from an LLM agent
 
-`pc-control` is a single CLI that prints one JSON object per call. Any agent
-with shell access can drive a Linux desktop through it.
+`pc-control` is a single CLI that prints one JSON object per call. It is
+harness-agnostic: any agent with shell access and image reading can drive a
+Linux desktop through it. This file is the generic integration guide.
 
 ## Readiness
 

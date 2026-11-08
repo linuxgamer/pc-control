@@ -7,12 +7,27 @@
 mouse, keyboard, window focus, and app switching on Wayland or X11. Every call
 prints one JSON object, so it composes cleanly with tool-using models.
 
+![pc-control demo](docs/demo.gif)
+
 It can work with any llm(**multimodality recommended**) that can run python. The skill is in [`etc/SKILL.md`](etc/SKILL.md), generic instructions are in [`etc/USAGE.md`](etc/USAGE.md).
 
 ```
 agent ── shell ──► pc-control ──► spectacle / grim / gnome-screenshot ──► compact JPEG
                       └────────► ydotool ──► ydotoold ──► /dev/uinput ──► apps & games
 ```
+
+## Harness support
+
+`pc-control` is **harness-agnostic**: one Python file, no imports from DeepSeek
+Harness, one JSON object per call. Any runtime that can run shell commands and
+read an image can drive it.
+
+- [`etc/USAGE.md`](etc/USAGE.md) — generic system-prompt snippet, JSON contract,
+  token strategy, batch format.
+- [`etc/SKILL.md`](etc/SKILL.md) — the same guidance in DeepSeek Harness skill
+  format (works as a plain instruction document too).
+- `install.sh` installs the skill into `~/.dsh/skills` by default; use
+  `--skill-dir DIR` for another harness, or `--no-skill` for the CLI only.
 
 ## Features
 
@@ -46,6 +61,14 @@ pc-control doctor
 package manager (pacman/apt/dnf/zypper), loads `uinput`, adds one udev rule, and
 runs `ydotoold` with a socket owned by your user (`/run/ydotool.sock`, mode
 0600).
+
+From a checkout with pip or pipx:
+
+```bash
+pipx install .          # isolated, puts pc-control on PATH
+# or
+python3 -m pip install --user .
+```
 
 For a checkout without installing:
 

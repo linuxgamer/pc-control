@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pc-control"
+version = "0.3.1"
+description = "LLM-friendly Linux desktop control: compact screenshots, OCR, real mouse/keyboard on Wayland/X11"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "linuxgamer" }]
+keywords = ["llm", "desktop", "automation", "wayland", "kde", "ydotool", "screenshot"]
+classifiers = [
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Topic :: Desktop Environment",
+  "Topic :: Software Development :: Testing",
+]
+dependencies = ["Pillow>=9"]
+
+[project.urls]
+Homepage = "https://github.com/linuxgamer/pc-control"
+Repository = "https://github.com/linuxgamer/pc-control"
+Issues = "https://github.com/linuxgamer/pc-control/issues"
+
+[tool.setuptools]
+script-files = ["pc-control"]
+packages = []
+py-modules = []

@@ -1,0 +1,65 @@
+name: Bug report
+description: Something broke or gave a wrong result
+title: "[bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please include `pc-control doctor` output and the
+        exact JSON error/hint if you have one.
+  - type: input
+    id: version
+    attributes:
+      label: pc-control version
+      description: "`pc-control --version`"
+      placeholder: "0.3.1"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Distribution and Python
+      placeholder: "EndeavourOS, Python 3.14"
+    validations:
+      required: true
+  - type: dropdown
+    id: desktop
+    attributes:
+      label: Desktop
+      options:
+        - KDE Plasma
+        - GNOME
+        - wlroots (Sway/Hyprland)
+        - Other Wayland
+        - X11
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Screenshot / coordinates
+        - Mouse
+        - Keyboard / typing
+        - OCR
+        - Focus / window
+        - Setup / daemon
+        - Packaging
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Expected vs actual, and the command you ran.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Doctor output
+      render: json
+      description: "`pc-control doctor`"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      render: shell
+      description: "`journalctl -u ydotoold -n 50` or any relevant error"

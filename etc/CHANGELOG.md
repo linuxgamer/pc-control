@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1
+
+- Added `pyproject.toml` packaging (`pip install .` / `pipx install .`).
+- Clarified that the CLI is harness-agnostic; added contribution and issue
+  templates, plus a demo GIF.
+- Removed the TF2-specific launcher (0.3.0).
+
 ## 0.3.0
 
 - Removed the TF2-specific `launch` command; start games yourself and use the

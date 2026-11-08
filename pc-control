@@ -26,7 +26,7 @@ import tempfile
 import time
 from pathlib import Path
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 APP = "pc-control"
 DEFAULT_MAX_WIDTH = 1280
 JPEG_QUALITY = 72

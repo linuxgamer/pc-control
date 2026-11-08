@@ -1,0 +1,34 @@
+name: Feature request
+description: Suggest a capability, backend, or improvement
+title: "[feature] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that is hard today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The behavior or command you would like.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Screenshot backend
+        - Token efficiency
+        - Input / movement
+        - Windows / focus
+        - Agent integration
+        - Packaging
+        - Docs
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
