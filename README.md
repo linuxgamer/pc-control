@@ -7,7 +7,7 @@
 mouse, keyboard, window focus, and app switching on Wayland or X11. Every call
 prints one JSON object, so it composes cleanly with tool-using models.
 
-![pc-control demo](docs/demo.gif)
+![pc-control demo](.github/assets/demo.gif)
 
 It can work with any llm(**multimodality recommended**) that can run python. The skill is in [`etc/SKILL.md`](etc/SKILL.md), generic instructions are in [`etc/USAGE.md`](etc/USAGE.md).
 
