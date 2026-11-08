@@ -1,0 +1,7 @@
+.pc-control/
+pc-control/.pc-control/
+shots/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store

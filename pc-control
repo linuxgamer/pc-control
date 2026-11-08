@@ -1,0 +1,1002 @@
+#!/usr/bin/env python3
+"""pc-control — LLM-friendly desktop control for Linux (KDE/GNOME/wlroots, Wayland or X11).
+
+Screenshots come from the compositor (spectacle/grim/gnome-screenshot/...);
+mouse and keyboard injection comes from ydotool (uinput), which games receive
+like a physical device.
+
+Every command prints exactly one compact JSON object on stdout and exits 0 on
+success or 1 on failure. Screenshot coordinates are accepted in the pixel space
+of the most recent screenshot (which may be downscaled); the helper maps them
+back to native pixels automatically.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import random
+import re
+import shutil
+import struct
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+VERSION = "0.2.0"
+APP = "pc-control"
+DEFAULT_MAX_WIDTH = 1280
+JPEG_QUALITY = 72
+KEEP_SHOTS = 40
+
+# Linux input-event-codes: friendly name -> keycode.
+KEYMAP = {
+    "esc": 1, "escape": 1,
+    "1": 2, "2": 3, "3": 4, "4": 5, "5": 6, "6": 7, "7": 8, "8": 9, "9": 10, "0": 11,
+    "minus": 12, "equal": 13, "backspace": 14, "tab": 15,
+    "q": 16, "w": 17, "e": 18, "r": 19, "t": 20, "y": 21, "u": 22, "i": 23, "o": 24, "p": 25,
+    "leftbrace": 26, "rightbrace": 27, "enter": 28, "return": 28,
+    "ctrl": 29, "leftctrl": 29, "a": 30, "s": 31, "d": 32, "f": 33, "g": 34, "h": 35,
+    "j": 36, "k": 37, "l": 38, "semicolon": 39, "apostrophe": 40, "grave": 41,
+    "shift": 42, "leftshift": 42, "backslash": 43,
+    "z": 44, "x": 45, "c": 46, "v": 47, "b": 48, "n": 49, "m": 50,
+    "comma": 51, "dot": 52, "period": 52, "slash": 53, "rightshift": 54,
+    "kpasterisk": 55, "alt": 56, "leftalt": 56, "space": 57, "capslock": 58,
+    "f1": 59, "f2": 60, "f3": 61, "f4": 62, "f5": 63, "f6": 64, "f7": 65, "f8": 66,
+    "f9": 67, "f10": 68, "numlock": 69, "scrolllock": 70,
+    "kp7": 71, "kp8": 72, "kp9": 73, "kpminus": 74, "kp4": 75, "kp5": 76, "kp6": 77,
+    "kpplus": 78, "kp1": 79, "kp2": 80, "kp3": 81, "kp0": 82, "kpdot": 83,
+    "f11": 87, "f12": 88, "kpenter": 96, "rightctrl": 97, "kpslash": 98,
+    "altgr": 100, "rightalt": 100,
+    "home": 102, "up": 103, "pageup": 104, "left": 105, "right": 106, "end": 107,
+    "down": 108, "pagedown": 109, "insert": 110, "delete": 111, "del": 111,
+    "mute": 113, "volumedown": 114, "volumeup": 115,
+    "meta": 125, "super": 125, "leftmeta": 125, "rightmeta": 126, "menu": 139,
+}
+
+# ydotool click codes and evdev BTN_* codes for press/release.
+BUTTONS = {
+    "left": (0xC0, 0x110),
+    "right": (0xC1, 0x111),
+    "middle": (0xC2, 0x112),
+    "side": (0xC3, 0x113),
+    "extra": (0xC4, 0x114),
+}
+
+SCREENSHOT_BACKENDS = ("spectacle", "grim", "gnome-screenshot", "wayshot", "scrot", "import")
+
+
+class PcError(Exception):
+    def __init__(self, message: str, hint: str | None = None):
+        super().__init__(message)
+        self.hint = hint
+
+
+def emit(obj: dict, code: int = 0) -> None:
+    print(json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
+    sys.exit(code)
+
+
+def which(name: str) -> str | None:
+    return shutil.which(name)
+
+
+def run(cmd: list[str], timeout: int = 30, env: dict | None = None) -> subprocess.CompletedProcess:
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+    except FileNotFoundError as exc:
+        raise PcError(f"missing executable: {cmd[0]}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise PcError(f"timed out after {timeout}s: {cmd[0]}") from exc
+
+
+# --------------------------------------------------------------------------- #
+# state / paths
+# --------------------------------------------------------------------------- #
+
+_STATE: Path | None = None
+
+
+def _writable(path: Path) -> bool:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / f".probe-{os.getpid()}"
+        probe.write_text("", encoding="utf-8")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def state_dir() -> Path:
+    """Writable runtime directory: env override, cwd, runtime dir, then temp.
+
+    The cwd default keeps screenshots and KWin helper scripts inside the agent
+    workspace, where both the model and the host compositor can read them.
+    """
+    global _STATE
+    if _STATE is not None:
+        return _STATE
+    candidates = []
+    env = os.environ.get("PC_STATE_DIR")
+    if env:
+        candidates.append(Path(env).expanduser())
+    candidates.append(Path.cwd() / ".pc-control")
+    candidates.append(Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "pc-control")
+    candidates.append(Path(tempfile.gettempdir()) / f"pc-control-{os.getuid()}")
+    for candidate in candidates:
+        if _writable(candidate):
+            _STATE = candidate
+            return candidate
+    raise PcError("no writable state directory", "Set PC_STATE_DIR to a writable path.")
+
+
+def shots_dir() -> Path:
+    path = state_dir() / "shots"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def last_shot_path() -> Path:
+    return state_dir() / "last-shot.json"
+
+
+def read_last_shot() -> dict | None:
+    try:
+        return json.loads(last_shot_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def write_last_shot(meta: dict) -> None:
+    try:
+        last_shot_path().write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def prune_shots(keep: int = KEEP_SHOTS) -> None:
+    try:
+        files = sorted(shots_dir().glob("*"),
+                       key=lambda p: p.stat().st_mtime, reverse=True)
+        images = [p for p in files if p.suffix.lower() in (".png", ".jpg", ".jpeg")]
+        for old in images[keep:]:
+            old.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+# --------------------------------------------------------------------------- #
+# display / screenshot
+# --------------------------------------------------------------------------- #
+
+def display_info() -> dict:
+    """Physical and logical geometry plus the display scale."""
+    try:
+        out = run(["kscreen-doctor", "-j"], timeout=10).stdout
+        data = json.loads(out)
+        for output in data.get("outputs", []):
+            if not output.get("enabled"):
+                continue
+            scale = float(output.get("scale") or 1.0) or 1.0
+            mode = next(
+                (m for m in output.get("modes", []) if m.get("id") == output.get("currentModeId")),
+                None,
+            )
+            if mode:
+                pw, ph = mode["size"]["width"], mode["size"]["height"]
+                return {
+                    "output": output.get("name"),
+                    "scale": scale,
+                    "physical": [pw, ph],
+                    "logical": [round(pw / scale), round(ph / scale)],
+                }
+    except (PcError, ValueError, KeyError, TypeError):
+        pass
+    try:
+        out = run(["xrandr", "--current"], timeout=10).stdout
+        match = re.search(r"current\s+(\d+)\s*x\s*(\d+)", out)
+        if match:
+            pw, ph = int(match.group(1)), int(match.group(2))
+            return {"output": None, "scale": 1.0, "physical": [pw, ph], "logical": [pw, ph]}
+    except PcError:
+        pass
+    return {"output": None, "scale": 1.0, "physical": None, "logical": None}
+
+
+def image_size(path: Path) -> tuple[int, int]:
+    try:
+        from PIL import Image
+        with Image.open(path) as image:
+            return image.size
+    except ImportError:
+        pass
+    with path.open("rb") as handle:
+        head = handle.read(33)
+    if head[:8] != b"\x89PNG\r\n\x1a\n":
+        raise PcError(f"cannot read image size: {path}")
+    return struct.unpack(">II", head[16:24])
+
+
+def detect_backend() -> str:
+    forced = os.environ.get("PC_SCREENSHOT_BACKEND")
+    if forced:
+        if not which(forced):
+            raise PcError(f"PC_SCREENSHOT_BACKEND={forced!r} not found")
+        return forced
+    for name in SCREENSHOT_BACKENDS:
+        if which(name):
+            return name
+    raise PcError(
+        "no screenshot backend found",
+        "Install spectacle (KDE), grim (wlroots), gnome-screenshot, wayshot, or scrot.",
+    )
+
+
+def capture(kind: str, path: Path) -> tuple[str, str | None]:
+    """Capture a raw PNG. Returns (effective kind, warning)."""
+    backend = detect_backend()
+    warning = None
+    env = os.environ.copy()
+    if backend == "spectacle":
+        env["XDG_CONFIG_HOME"] = str(state_dir() / "config")
+        env["XDG_CACHE_HOME"] = str(state_dir() / "cache")
+        (state_dir() / "config").mkdir(parents=True, exist_ok=True)
+        (state_dir() / "cache").mkdir(parents=True, exist_ok=True)
+        flag = {"full": "-f", "window": "-a", "screen": "-m"}[kind]
+        args = [which("spectacle"), flag, "-b", "-n", "-o", str(path)]
+    elif backend == "grim":
+        if kind != "full":
+            warning = "grim supports full-screen capture only; captured full screen"
+            kind = "full"
+        args = [which("grim"), str(path)]
+    elif backend == "gnome-screenshot":
+        if kind != "full":
+            warning = "gnome-screenshot supports full-screen capture only; captured full screen"
+            kind = "full"
+        args = [which("gnome-screenshot"), "-f", str(path)]
+    elif backend == "wayshot":
+        if kind != "full":
+            warning = "wayshot supports full-screen capture only; captured full screen"
+            kind = "full"
+        args = [which("wayshot"), "-f", str(path)]
+    elif backend == "scrot":
+        if kind != "full":
+            warning = "scrot supports full-screen capture only; captured full screen"
+            kind = "full"
+        args = [which("scrot"), str(path)]
+    else:  # ImageMagick import (X11)
+        if kind != "full":
+            warning = "import supports full-screen capture only; captured full screen"
+            kind = "full"
+        args = [which("import"), "-window", "root", str(path)]
+    proc = run(args, timeout=30, env=env)
+    if proc.returncode != 0 or not path.exists():
+        raise PcError(f"{backend} failed: {(proc.stderr or proc.stdout).strip()[:300]}")
+    return kind, warning
+
+
+def require_pillow():
+    try:
+        from PIL import Image, ImageDraw  # noqa: F401
+        return Image, ImageDraw
+    except ImportError as exc:
+        raise PcError(
+            "Pillow is required for compact/grid/region shots",
+            "Install it: python3 -m pip install --user pillow (or use --full --no-grid).",
+        ) from exc
+
+
+def ocr_text(path: Path, lang: str) -> str:
+    exe = which("tesseract")
+    if not exe:
+        raise PcError("tesseract is not installed", "Install tesseract-ocr to use --ocr.")
+    proc = run([exe, str(path), "stdout", "-l", lang], timeout=30)
+    if proc.returncode != 0:
+        raise PcError(f"tesseract failed: {(proc.stderr or proc.stdout).strip()[:200]}")
+    return proc.stdout.strip()
+
+
+def ocr_languages() -> list[str]:
+    exe = which("tesseract")
+    if not exe:
+        return []
+    proc = run([exe, "--list-langs"], timeout=10)
+    lines = [line.strip() for line in proc.stdout.splitlines()]
+    return [line for line in lines if line and " " not in line]
+
+
+def pick_ocr_lang(requested: str | None) -> str:
+    available = ocr_languages()
+    if requested:
+        if requested not in available:
+            raise PcError(
+                f"OCR language {requested!r} is not installed",
+                f"Available: {', '.join(available) or 'none'} (install tesseract-data-<lang>).",
+            )
+        return requested
+    env = os.environ.get("PC_OCR_LANG")
+    if env and env in available:
+        return env
+    preferred = (os.environ.get("LANG") or "").split(".")[0].split("_")[0].lower()
+    for candidate in (preferred, "eng"):
+        if candidate and candidate in available:
+            return candidate
+    if available:
+        return available[0]
+    raise PcError("no tesseract language data installed",
+                  "Install tesseract-data-eng (or your language).")
+
+
+def add_grid(image, draw, step: int = 100) -> None:
+    for x in range(step, image.width, step):
+        draw.line([(x, 0), (x, image.height)], fill=(255, 0, 0), width=1)
+    for y in range(step, image.height, step):
+        draw.line([(0, y), (image.width, y)], fill=(255, 0, 0), width=1)
+    for x in range(200, image.width, 200):
+        draw.text((x + 3, 2), str(x), fill=(255, 255, 0))
+    for y in range(200, image.height, 200):
+        draw.text((3, y + 1), str(y), fill=(255, 255, 0))
+
+
+def screenshot(kind: str = "full", out: str | None = None, region: list[int] | None = None,
+               max_width: int | None = None, full: bool = False, grid: bool = False,
+               ocr: bool = False, lang: str | None = None) -> dict:
+    state = state_dir()
+    shots_dir()
+    raw = shots_dir() / f".raw-{int(time.time())}-{random.randrange(0xFFFF):04x}.png"
+    effective_kind, warning = capture(kind, raw)
+    work = raw
+    try:
+        native_w, native_h = image_size(raw)
+        offset_x = offset_y = 0
+        work = raw
+        work_w, work_h = native_w, native_h
+        if region:
+            if len(region) != 4:
+                raise PcError("--region needs X Y W H")
+            rx, ry, rw, rh = region
+            if rw <= 0 or rh <= 0 or rx < 0 or ry < 0 or rx + rw > native_w or ry + rh > native_h:
+                raise PcError(f"region {region} is outside the {native_w}x{native_h} screen")
+            Image, _ = require_pillow()
+            with Image.open(raw) as image:
+                work = raw.with_name(raw.stem + "-crop.png")
+                image.crop((rx, ry, rx + rw, ry + rh)).save(work)
+            offset_x, offset_y = rx, ry
+            work_w, work_h = rw, rh
+
+        text = None
+        ocr_error = None
+        if ocr:
+            try:
+                text = ocr_text(work, pick_ocr_lang(lang))
+            except PcError as exc:
+                ocr_error = str(exc)
+                if exc.hint:
+                    ocr_error = f"{ocr_error} — {exc.hint}"
+
+        target_w = work_w if full else min(work_w, max_width or DEFAULT_MAX_WIDTH)
+        scale = work_w / target_w
+        target_h = round(work_h / scale)
+        suffix = ".png" if full and not grid else ".jpg"
+        if out:
+            dest = Path(out).expanduser().resolve()
+            dest.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            dest = shots_dir() / f"{time.strftime('%Y%m%d-%H%M%S')}-{random.randrange(0xFFFF):04x}{suffix}"
+
+        if scale == 1 and not grid and dest.suffix.lower() == ".png":
+            shutil.copyfile(work, dest)
+        else:
+            Image, ImageDraw = require_pillow()
+            with Image.open(work) as image:
+                image = image.convert("RGB")
+                if scale != 1:
+                    image = image.resize((target_w, target_h), Image.LANCZOS)
+                if grid:
+                    add_grid(image, ImageDraw.Draw(image))
+                if dest.suffix.lower() in (".jpg", ".jpeg"):
+                    image.save(dest, "JPEG", quality=JPEG_QUALITY, optimize=True)
+                else:
+                    image.save(dest, "PNG")
+
+        width, height = image_size(dest)
+        meta = {
+            "ok": True,
+            "path": str(dest),
+            "width": width,
+            "height": height,
+            "native_width": work_w,
+            "native_height": work_h,
+            "scale_x": work_w / width,
+            "scale_y": work_h / height,
+            "offset_x": offset_x,
+            "offset_y": offset_y,
+            "kind": effective_kind,
+            "mappable": effective_kind != "window",
+            "format": dest.suffix.lower().lstrip("."),
+            "bytes": dest.stat().st_size,
+            "note": "coordinates are pixels in this image; move() maps them to native automatically",
+        }
+        if effective_kind == "window":
+            meta["clickable"] = False
+            meta["hint"] = "window shots are for reading; take a full shot before moving/clicking"
+        if warning:
+            meta["warning"] = warning
+        if text is not None:
+            meta["ocr"] = text
+        if ocr_error is not None:
+            meta["ocr_error"] = ocr_error
+        write_last_shot(meta)
+        prune_shots()
+        return meta
+    finally:
+        for leftover in {raw, work}:
+            leftover.unlink(missing_ok=True)
+
+
+# --------------------------------------------------------------------------- #
+# KWin scripting: cursor position, active window, focus
+# --------------------------------------------------------------------------- #
+
+def kwin_available() -> bool:
+    return bool(which("qdbus6") and which("journalctl"))
+
+
+def kwin_call(method: str, *args: str) -> str:
+    cmd = ["qdbus6", "org.kde.KWin", "/Scripting", f"org.kde.kwin.Scripting.{method}", *args]
+    proc = run(cmd, timeout=5)
+    if proc.returncode != 0:
+        raise PcError(f"KWin scripting failed: {(proc.stderr or proc.stdout).strip()[:200]}")
+    return proc.stdout
+
+
+def kwin_script(body: str, marker: str, timeout: float = 2.0) -> str:
+    if not kwin_available():
+        raise PcError("KWin scripting not available", "This feature needs KDE Plasma with qdbus6.")
+    nonce = f"{os.getpid()}-{time.time_ns()}"
+    name = f"pc-{marker.lower()}-{nonce}"
+    folder = state_dir() / "kwin"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{name}.js"
+    path.write_text(body.replace("__MARKER__", marker).replace("__NONCE__", nonce), encoding="utf-8")
+    try:
+        kwin_call("loadScript", str(path), name)
+        kwin_call("start")
+        needle = f"{marker}:{nonce}:"
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            out = run(["journalctl", "--user", "-o", "cat", "-n", "400", "--no-pager"],
+                      timeout=5).stdout
+            for line in out.splitlines():
+                if needle in line:
+                    return line.split(needle, 1)[1].strip()
+            time.sleep(0.05)
+        raise PcError("KWin did not answer the script")
+    finally:
+        try:
+            kwin_call("unloadScript", name)
+        except PcError:
+            pass
+        path.unlink(missing_ok=True)
+
+
+def cursor_pos() -> tuple[int, int]:
+    value = kwin_script(
+        'print("__MARKER__:__NONCE__:" + workspace.cursorPos.x + "," + workspace.cursorPos.y);',
+        "PCCURSOR",
+    )
+    pair = value.split(",")
+    if len(pair) < 2:
+        raise PcError(f"unexpected cursor reply: {value!r}")
+    return int(pair[0]), int(pair[1])
+
+
+def cmd_active() -> dict:
+    value = kwin_script(
+        'var w = workspace.activeWindow; print("__MARKER__:__NONCE__:" + (w ? (w.caption + " | " + (w.resourceClass || "")) : "none"));',
+        "PCACTIVE",
+    )
+    return {"ok": True, "active": value}
+
+
+def cmd_focus(pattern: str) -> dict:
+    body = (
+        'var pat = ' + json.dumps(pattern.lower()) + ';\n'
+        'var list = (typeof workspace.windowList === "function") ? workspace.windowList() : workspace.clientList();\n'
+        'var hit = null;\n'
+        'for (var i = 0; i < list.length; i++) {\n'
+        '  var w = list[i];\n'
+        '  var cls = ((w.resourceClass || "") + "").toLowerCase();\n'
+        '  var cap = ((w.caption || "") + "").toLowerCase();\n'
+        '  if (cls.indexOf(pat) >= 0 || cap.indexOf(pat) >= 0) { hit = w; break; }\n'
+        '}\n'
+        'if (hit) { hit.minimized = false; workspace.activeWindow = hit; }\n'
+        'print("__MARKER__:__NONCE__:" + (hit ? hit.caption : "NOTFOUND"));'
+    )
+    value = kwin_script(body, "PCFOCUS")
+    if value == "NOTFOUND":
+        raise PcError(f"no window matching {pattern!r}", "Try part of the window title or class.")
+    return {"ok": True, "focused": value}
+
+
+# --------------------------------------------------------------------------- #
+# input
+# --------------------------------------------------------------------------- #
+
+def socket_path() -> str:
+    configured = os.environ.get("YDOTOOL_SOCKET")
+    if configured:
+        return configured
+    runtime = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    for candidate in ("/run/ydotool.sock", f"{runtime}/.ydotool_socket"):
+        if os.path.exists(candidate):
+            return candidate
+    return "/run/ydotool.sock"
+
+
+def ydotool(args: list[str], timeout: int = 15) -> None:
+    exe = which("ydotool")
+    if not exe:
+        raise PcError("ydotool is not installed", "Run: sudo ./setup-uinput.sh")
+    sock = socket_path()
+    env = os.environ.copy()
+    env["YDOTOOL_SOCKET"] = sock
+    proc = run([exe, *args], timeout=timeout, env=env)
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout).strip()[:300]
+        raise PcError(
+            f"ydotool failed: {detail or 'unknown error'}",
+            f"Is ydotoold running? socket={sock}. Run: pc-control doctor",
+        )
+
+
+def map_shot_point(x: float, y: float, native: bool = False) -> tuple[float, float]:
+    """Map coordinates from the latest screenshot's pixel space to native pixels."""
+    if native:
+        return x, y
+    meta = read_last_shot()
+    if not meta:
+        return x, y
+    if not meta.get("mappable", True):
+        raise PcError(
+            "the latest screenshot is window-only and cannot be mapped to the screen",
+            "Take a full shot (no --window) before moving or clicking, or pass --native.",
+        )
+    sx = float(meta.get("scale_x") or 1.0)
+    sy = float(meta.get("scale_y") or 1.0)
+    ox = float(meta.get("offset_x") or 0)
+    oy = float(meta.get("offset_y") or 0)
+    return ox + x * sx, oy + y * sy
+
+
+def cmd_move(x: float, y: float, native: bool = False, scaled: bool = False,
+             dry_run: bool = False) -> dict:
+    nx, ny = map_shot_point(x, y, native)
+    if scaled:
+        info = display_info()
+        nx, ny = nx / (info["scale"] or 1.0), ny / (info["scale"] or 1.0)
+    tx, ty = round(nx), round(ny)
+    base = {"screenshot_xy": [x, y], "target": [tx, ty]}
+    if dry_run:
+        return {"ok": True, "dry_run": True, **base}
+
+    try:
+        cx, cy = cursor_pos()
+    except PcError:
+        ydotool(["mousemove", "--absolute", "-x", str(tx), "-y", str(ty)])
+        return {"ok": True, **base, "feedback": False, "note": "KWin unavailable; move is approximate"}
+
+    attempts = 0
+    gx = gy = 1.0
+    for attempts in range(1, 26):
+        dx, dy = tx - cx, ty - cy
+        if abs(dx) <= 2 and abs(dy) <= 2:
+            break
+        # KWin applies adaptive acceleration: learn the gain and divide it out.
+        sx = int(max(-220, min(220, dx / max(gx, 0.25) * 0.9)))
+        sy = int(max(-220, min(220, dy / max(gy, 0.25) * 0.9)))
+        if sx == 0 and dx != 0:
+            sx = 1 if dx > 0 else -1
+        if sy == 0 and dy != 0:
+            sy = 1 if dy > 0 else -1
+        px, py = cx, cy
+        ydotool(["mousemove", "-x", str(sx), "-y", str(sy)])
+        time.sleep(0.09)
+        cx, cy = cursor_pos()
+        if abs(sx) >= 20:
+            gx = max(0.3, min(3.0, (cx - px) / sx))
+        if abs(sy) >= 20:
+            gy = max(0.3, min(3.0, (cy - py) / sy))
+    result = {"ok": True, **base, "cursor": [cx, cy], "error": [cx - tx, cy - ty],
+              "attempts": attempts}
+    if abs(cx - tx) > 2 or abs(cy - ty) > 2:
+        result["warning"] = "did not converge; verify with a fresh shot"
+    return result
+
+
+def cmd_cursor() -> dict:
+    cx, cy = cursor_pos()
+    meta = read_last_shot()
+    if meta and meta.get("mappable", True):
+        sx = float(meta.get("scale_x") or 1.0)
+        sy = float(meta.get("scale_y") or 1.0)
+        ox = float(meta.get("offset_x") or 0)
+        oy = float(meta.get("offset_y") or 0)
+        shot = [round((cx - ox) / sx), round((cy - oy) / sy)]
+        return {"ok": True, "native": [cx, cy], "shot": shot,
+                "scale": [sx, sy], "offset": [ox, oy]}
+    return {"ok": True, "native": [cx, cy], "shot": [cx, cy]}
+
+
+def cmd_move_rel(dx: float, dy: float, dry_run: bool = False) -> dict:
+    args = ["mousemove", "-x", str(round(dx)), "-y", str(round(dy))]
+    if dry_run:
+        return {"ok": True, "dry_run": True, "ydotool": args}
+    ydotool(args)
+    return {"ok": True, "relative": [round(dx), round(dy)]}
+
+
+def cmd_click(button: str, double: bool = False, at: list[float] | None = None,
+              native: bool = False, dry_run: bool = False) -> dict:
+    if button not in BUTTONS:
+        raise PcError(f"unknown button {button!r}", "left, right, middle, side, extra")
+    moved = None
+    if at:
+        moved = cmd_move(at[0], at[1], native=native, dry_run=dry_run)
+        if not dry_run:
+            time.sleep(0.05)
+    args = ["click"]
+    if double:
+        args += ["--repeat", "2", "--next-delay", "80"]
+    args.append(hex(BUTTONS[button][0]))
+    if dry_run:
+        return {"ok": True, "dry_run": True, "ydotool": args, "moved": moved}
+    ydotool(args)
+    return {"ok": True, "button": button, "double": double, "moved": moved}
+
+
+def cmd_button(button: str, pressed: bool) -> dict:
+    if button not in BUTTONS:
+        raise PcError(f"unknown button {button!r}", "left, right, middle, side, extra")
+    code = BUTTONS[button][1]
+    ydotool(["key", f"{code}:{1 if pressed else 0}"])
+    return {"ok": True, "button": button, "state": "down" if pressed else "up"}
+
+
+def parse_keys(spec: str) -> list[int]:
+    codes: list[int] = []
+    for token in spec.split("+"):
+        token = token.strip().lower()
+        if not token:
+            continue
+        if token in KEYMAP:
+            codes.append(KEYMAP[token])
+        elif token.isdigit():
+            codes.append(int(token))
+        else:
+            raise PcError(
+                f"unknown key {token!r}",
+                "Try letters, digits, space, enter, escape, tab, ctrl, shift, alt, f1..f12, arrows.",
+            )
+    if not codes:
+        raise PcError("no keys given")
+    return codes
+
+
+def cmd_key(spec: str, hold_ms: int = 0, dry_run: bool = False) -> dict:
+    codes = parse_keys(spec)
+    events = [f"{code}:1" for code in codes]
+    if hold_ms > 0:
+        if dry_run:
+            return {"ok": True, "dry_run": True, "press": events,
+                    "hold_ms": hold_ms, "release": [f"{code}:0" for code in reversed(codes)]}
+        ydotool(["key", *events])
+        time.sleep(hold_ms / 1000.0)
+        ydotool(["key", *[f"{code}:0" for code in reversed(codes)]])
+        return {"ok": True, "keys": spec, "hold_ms": hold_ms}
+    events += [f"{code}:0" for code in reversed(codes)]
+    if dry_run:
+        return {"ok": True, "dry_run": True, "key": events}
+    ydotool(["key", *events])
+    return {"ok": True, "keys": spec}
+
+
+def cmd_type(text: str, dry_run: bool = False) -> dict:
+    args = ["type", "--", text] if text.startswith("-") else ["type", text]
+    if dry_run:
+        return {"ok": True, "dry_run": True, "ydotool": args}
+    ydotool(args, timeout=30)
+    return {"ok": True, "typed": text}
+
+
+def cmd_scroll(amount: int, horizontal: bool = False) -> dict:
+    x, y = (amount, 0) if horizontal else (0, amount)
+    ydotool(["mousemove", "--wheel", "-x", str(x), "-y", str(y)])
+    return {"ok": True, "scroll": amount, "axis": "horizontal" if horizontal else "vertical"}
+
+
+# --------------------------------------------------------------------------- #
+# apps / diagnostics
+# --------------------------------------------------------------------------- #
+
+def steam_running() -> bool:
+    return subprocess.run(["pgrep", "-x", "steam"], capture_output=True).returncode == 0
+
+
+def tf2_installed() -> bool:
+    roots = [Path.home() / ".steam/steam", Path.home() / ".local/share/Steam"]
+    for base in list(roots):
+        vdf = base / "steamapps/libraryfolders.vdf"
+        try:
+            text = vdf.read_text(errors="ignore")
+        except OSError:
+            continue
+        for match in re.finditer(r'"path"\s*"([^"]+)"', text):
+            roots.append(Path(match.group(1)))
+    return any((root / "steamapps/appmanifest_440.acf").exists() for root in roots)
+
+
+def cmd_launch(name: str) -> dict:
+    if name == "tf2":
+        if not steam_running():
+            raise PcError("Steam is not running on the host",
+                          "Start Steam yourself first; launching it from the sandbox hides the GPU.")
+        proc = subprocess.Popen(
+            ["steam", "-applaunch", "440"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        return {"ok": True, "app": "tf2", "pid": proc.pid,
+                "note": "TF2 starts via the running Steam client; give it ~20-40s"}
+    if name == "steam":
+        raise PcError("refusing to start Steam inside the sandbox",
+                      "Start Steam on the host (GUI or terminal), then retry.")
+    raise PcError(f"unknown app {name!r}", "available: tf2")
+
+
+def cmd_doctor() -> dict:
+    checks = []
+
+    def add(name: str, ok: bool, detail: str, required: bool = True) -> None:
+        checks.append({"name": name, "ok": ok, "detail": detail, "required": required})
+
+    add("session", os.environ.get("XDG_SESSION_TYPE") in ("wayland", "x11"),
+        f"type={os.environ.get('XDG_SESSION_TYPE')} wayland={os.environ.get('WAYLAND_DISPLAY')}",
+        required=False)
+    info = display_info()
+    add("display", bool(info["physical"]),
+        f"{info['output']} {info['physical']} logical={info['logical']} scale={info['scale']}")
+    try:
+        backend = detect_backend()
+        add("screenshot", True, backend)
+    except PcError as exc:
+        add("screenshot", False, str(exc))
+    add("ydotool", bool(which("ydotool")), which("ydotool") or "not found")
+    sock = socket_path()
+    add("ydotoold", os.path.exists(sock), sock)
+    add("uinput", os.path.exists("/sys/class/misc/uinput"),
+        "loaded" if os.path.exists("/sys/class/misc/uinput") else "uinput module not loaded")
+    add("kwin", kwin_available(), "qdbus6 + journalctl (cursor/focus feedback)", required=False)
+    add("pillow", _has_pillow(), "compact/grid/region shots")
+    add("tesseract", bool(which("tesseract")), "OCR (--ocr)", required=False)
+    add("steam", bool(which("steam")), which("steam") or "not found", required=False)
+    tf2 = tf2_installed()
+    add("tf2", tf2, "appmanifest_440 found" if tf2 else "TF2 not found", required=False)
+    add("state", _writable(state_dir()), str(state_dir()))
+    add("sandbox", True,
+        "/dev/uinput is hidden by the agent sandbox; ydotool talks to the host daemon instead",
+        required=False)
+    ready = all(c["ok"] for c in checks if c["required"])
+    return {"ok": True, "ready": ready, "checks": checks}
+
+
+def _has_pillow() -> bool:
+    try:
+        import PIL  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+# --------------------------------------------------------------------------- #
+# batch / CLI
+# --------------------------------------------------------------------------- #
+
+def dispatch(action: dict) -> dict:
+    name = action.get("action")
+    if name == "shot":
+        return screenshot(
+            action.get("kind", "full"),
+            action.get("out"),
+            action.get("region"),
+            action.get("max_width"),
+            bool(action.get("full", False)),
+            bool(action.get("grid", False)),
+            bool(action.get("ocr", False)),
+            action.get("ocr_lang"),
+        )
+    if name == "move":
+        return cmd_move(float(action["x"]), float(action["y"]),
+                        bool(action.get("native", False)), bool(action.get("scaled", False)))
+    if name == "move-rel":
+        return cmd_move_rel(float(action.get("dx", 0)), float(action.get("dy", 0)))
+    if name == "click":
+        return cmd_click(action.get("button", "left"), bool(action.get("double", False)),
+                         action.get("at"), bool(action.get("native", False)))
+    if name == "down":
+        return cmd_button(action.get("button", "left"), True)
+    if name == "up":
+        return cmd_button(action.get("button", "left"), False)
+    if name == "key":
+        return cmd_key(action["keys"], int(action.get("hold_ms", 0)))
+    if name == "type":
+        return cmd_type(action["text"])
+    if name == "scroll":
+        return cmd_scroll(int(action.get("amount", 0)), bool(action.get("horizontal", False)))
+    if name == "wait":
+        time.sleep(max(0, int(action.get("ms", 0))) / 1000.0)
+        return {"ok": True, "waited_ms": int(action.get("ms", 0))}
+    if name == "launch":
+        return cmd_launch(action.get("app", "tf2"))
+    if name == "cursor":
+        return cmd_cursor()
+    if name == "screen":
+        info = display_info()
+        meta = read_last_shot()
+        return {"ok": True, **info, "last_shot": meta}
+    if name == "active":
+        return cmd_active()
+    if name == "focus":
+        return cmd_focus(action["pattern"])
+    raise PcError(f"unknown action {name!r}")
+
+
+def cmd_run(spec: str, continue_on_error: bool = False) -> dict:
+    raw = sys.stdin.read() if spec == "-" else spec
+    try:
+        actions = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise PcError(f"invalid JSON: {exc}") from exc
+    if not isinstance(actions, list):
+        raise PcError("run expects a JSON array of actions")
+    if len(actions) > 60:
+        raise PcError("too many actions in one run (max 60)")
+    results = []
+    for index, action in enumerate(actions):
+        if not isinstance(action, dict):
+            raise PcError(f"action {index} is not an object")
+        try:
+            results.append(dispatch(action))
+        except PcError as exc:
+            results.append({"ok": False, "action": action.get("action"), "index": index,
+                            "error": str(exc), "hint": exc.hint})
+            if not continue_on_error:
+                return {"ok": False, "index": index, "results": results}
+    return {"ok": all(r.get("ok") for r in results), "results": results}
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="pc-control", description=__doc__.splitlines()[0])
+    parser.add_argument("--version", action="version", version=f"pc-control {VERSION}")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    sub.add_parser("doctor")
+    sub.add_parser("screen")
+
+    p = sub.add_parser("shot")
+    p.add_argument("--window", action="store_true")
+    p.add_argument("--screen", action="store_true")
+    p.add_argument("--out")
+    p.add_argument("--region", nargs=4, type=int, metavar=("X", "Y", "W", "H"))
+    p.add_argument("--max-width", type=int, default=None)
+    p.add_argument("--full", action="store_true")
+    p.add_argument("--grid", action="store_true")
+    p.add_argument("--ocr", action="store_true")
+    p.add_argument("--ocr-lang", default=None)
+
+    p = sub.add_parser("move")
+    p.add_argument("x", type=float)
+    p.add_argument("y", type=float)
+    p.add_argument("--native", action="store_true")
+    p.add_argument("--scaled", action="store_true")
+    p.add_argument("--dry-run", action="store_true")
+
+    p = sub.add_parser("move-rel")
+    p.add_argument("dx", type=float)
+    p.add_argument("dy", type=float)
+    p.add_argument("--dry-run", action="store_true")
+
+    p = sub.add_parser("click")
+    p.add_argument("button", nargs="?", default="left")
+    p.add_argument("--double", action="store_true")
+    p.add_argument("--at", nargs=2, type=float, metavar=("X", "Y"))
+    p.add_argument("--native", action="store_true")
+    p.add_argument("--dry-run", action="store_true")
+
+    p = sub.add_parser("down")
+    p.add_argument("button", nargs="?", default="left")
+    p = sub.add_parser("up")
+    p.add_argument("button", nargs="?", default="left")
+
+    p = sub.add_parser("key")
+    p.add_argument("keys")
+    p.add_argument("--hold", type=int, default=0, metavar="MS")
+    p.add_argument("--dry-run", action="store_true")
+
+    p = sub.add_parser("type")
+    p.add_argument("text")
+
+    p = sub.add_parser("scroll")
+    p.add_argument("amount", type=int)
+    p.add_argument("--horizontal", action="store_true")
+
+    p = sub.add_parser("wait")
+    p.add_argument("ms", type=int)
+
+    p = sub.add_parser("run")
+    p.add_argument("spec")
+    p.add_argument("--continue-on-error", action="store_true")
+
+    p = sub.add_parser("launch")
+    p.add_argument("app", nargs="?", default="tf2", choices=["tf2", "steam"])
+
+    sub.add_parser("active")
+    sub.add_parser("cursor")
+    p = sub.add_parser("focus")
+    p.add_argument("pattern")
+    return parser
+
+
+def main(argv: list[str]) -> None:
+    args = build_parser().parse_args(argv)
+    try:
+        if args.command == "doctor":
+            emit(cmd_doctor())
+        if args.command == "screen":
+            emit({"ok": True, **display_info(), "last_shot": read_last_shot()})
+        if args.command == "shot":
+            kind = "window" if args.window else "screen" if args.screen else "full"
+            emit(screenshot(kind, args.out, args.region, args.max_width, args.full,
+                            args.grid, args.ocr, args.ocr_lang))
+        if args.command == "move":
+            emit(cmd_move(args.x, args.y, args.native, args.scaled, args.dry_run))
+        if args.command == "move-rel":
+            emit(cmd_move_rel(args.dx, args.dy, args.dry_run))
+        if args.command == "click":
+            emit(cmd_click(args.button, args.double, args.at, args.native, args.dry_run))
+        if args.command == "down":
+            emit(cmd_button(args.button, True))
+        if args.command == "up":
+            emit(cmd_button(args.button, False))
+        if args.command == "key":
+            emit(cmd_key(args.keys, args.hold, args.dry_run))
+        if args.command == "type":
+            emit(cmd_type(args.text))
+        if args.command == "scroll":
+            emit(cmd_scroll(args.amount, args.horizontal))
+        if args.command == "wait":
+            time.sleep(max(0, args.ms) / 1000.0)
+            emit({"ok": True, "waited_ms": args.ms})
+        if args.command == "run":
+            emit(cmd_run(args.spec, args.continue_on_error))
+        if args.command == "launch":
+            emit(cmd_launch(args.app))
+        if args.command == "active":
+            emit(cmd_active())
+        if args.command == "cursor":
+            emit(cmd_cursor())
+        if args.command == "focus":
+            emit(cmd_focus(args.pattern))
+        raise PcError(f"unknown command {args.command!r}")
+    except PcError as exc:
+        emit({"ok": False, "command": args.command, "error": str(exc), "hint": exc.hint}, 1)
+    except KeyboardInterrupt:
+        emit({"ok": False, "error": "interrupted"}, 130)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
