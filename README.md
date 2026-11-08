@@ -3,28 +3,23 @@
 [![test](https://github.com/linuxgamer/pc-control/actions/workflows/test.yml/badge.svg)](https://github.com/linuxgamer/pc-control/actions/workflows/test.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Let an LLM see and operate your Linux desktop — with tokens in mind.**
-
-`pc-control` is a small, dependency-light CLI that gives an agent screenshots,
+`pc-control` is a small, dependency-light CLI that gives an llm screenshots,
 mouse, keyboard, window focus, and app launching on Wayland or X11. Every call
 prints one JSON object, so it composes cleanly with tool-using models.
 
-It was built for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
-but works with any agent that can run shell commands. The companion skill lives
-in [`skill/SKILL.md`](skill/SKILL.md); generic instructions are in
-[`docs/LLM.md`](docs/LLM.md).
+It can work with any llm(**multimodality recommended**) that can run python. The skill is in [`etc/SKILL.md`](etc/SKILL.md), generic instructions are in [`etc/USAGE.md`](etc/USAGE.md).
 
 ```
-agent ──shell──► pc-control ──► spectacle / grim / gnome-screenshot ──► compact JPEG
+agent ── shell ──► pc-control ──► spectacle / grim / gnome-screenshot ──► compact JPEG
                       └────────► ydotool ──► ydotoold ──► /dev/uinput ──► apps & games
 ```
 
 ## Features
 
-- **Real input, not X11 events** — `ydotool` creates a kernel virtual device, so
+- **Simulates real input** — `ydotool` creates a kernel virtual device, so
   native Wayland apps *and games* receive mouse/keyboard, including relative
   look.
-- **Token-aware screenshots** — compact JPEG (1280 px) by default, `--region`
+- **Saves tokens** — compacts screenshots (1280 px) by default, `--region`
   crops, `--ocr` returns text, `--grid` for precise coordinates, `--full` when
   quality matters.
 - **Automatic coordinate mapping** — coordinates from a downscaled or cropped
@@ -77,22 +72,9 @@ pc-control run '[{"action":"shot"},{"action":"click","at":[640,360]},{"action":"
 ```
 
 Read the image at the returned `path` with your agent's image tool, or use
-`--ocr` and skip the image entirely.
+`--ocr` for text-only mode.
 
-## Why it saves tokens
-
-| Mode | Output | Relative image cost |
-|---|---|---|
-| `shot` (default) | 1280×720 JPEG | ~½ of native |
-| `shot --region X Y W H` | exact crop | proportional to area |
-| `shot --ocr` | text field | zero image tokens |
-| `shot --window` | active window | small, read-only |
-| `shot --full` | 1920×1080 PNG | full |
-
-Coordinates are always in the returned image's pixel space; `pc-control` stores
-the scale/offset and converts for `move` and `click --at`.
-
-## Commands
+## More commands
 
 ```text
 doctor | screen
@@ -114,16 +96,6 @@ launch tf2|steam
 `run` actions: `shot`, `move`, `move-rel`, `click`, `down`, `up`, `key`, `type`,
 `scroll`, `wait`, `launch`, `focus`, `active`, `cursor`, `screen`.
 
-## How movement works
-
-`ydotool --absolute` is really “jump to 0,0, then move relatively”, and desktop
-pointer acceleration distorts it. `pc-control` instead reads the real cursor
-position through a one-shot KWin script, steps in bounded increments, learns the
-acceleration gain per axis, and corrects until it is within 2 px. On non-KDE
-desktops it falls back to approximate absolute movement (`feedback: false`).
-
-`move-rel` sends raw relative motion — the right primitive for game look.
-
 ## Games
 
 ```bash
@@ -136,8 +108,7 @@ pc-control up left
 ```
 
 Each observe→act cycle is ~1–3 s: fine for menus, walking, and chat, not for
-live aiming. Automating competitive play violates VAC/Steam ToS — prefer
-offline or private servers.
+live aiming.
 
 ## Configuration
 
@@ -147,13 +118,6 @@ offline or private servers.
 | `PC_SCREENSHOT_BACKEND` | auto | `spectacle`, `grim`, `gnome-screenshot`, `wayshot`, `scrot`, `import` |
 | `PC_OCR_LANG` | from `LANG`, then `eng` | Tesseract language |
 | `YDOTOOL_SOCKET` | `/run/ydotool.sock` | Daemon socket |
-
-## Safety
-
-`ydotoold` runs as root and can synthesize any input; the socket is mode 0600
-and owned by your desktop user. The agent still needs approval for each shell
-call. Don’t leave the daemon enabled on a shared machine, and never click window
-title-bar controls — use `focus`.
 
 ## Development
 
@@ -168,9 +132,8 @@ Layout:
 pc-control       single-file CLI (stdlib; Pillow optional)
 setup-uinput.sh  one-time root setup
 install.sh       user-level installer (CLI + skill)
-skill/SKILL.md   DeepSeek Harness skill
-docs/LLM.md      generic agent instructions
-tests/           unit tests
+etc/SKILL.md     skill for any harness
+etc/USAGE.md     generic agent instructions
 ```
 
 ## License
