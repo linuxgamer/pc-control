@@ -4,7 +4,7 @@
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 `pc-control` is a small, dependency-light CLI that gives an llm screenshots,
-mouse, keyboard, window focus, and app launching on Wayland or X11. Every call
+mouse, keyboard, window focus, and app switching on Wayland or X11. Every call
 prints one JSON object, so it composes cleanly with tool-using models.
 
 It can work with any llm(**multimodality recommended**) that can run python. The skill is in [`etc/SKILL.md`](etc/SKILL.md), generic instructions are in [`etc/USAGE.md`](etc/USAGE.md).
@@ -90,17 +90,24 @@ scroll N [--horizontal]                 # negative = down
 wait MS
 run JSON [--continue-on-error]
 active | cursor | focus PATTERN
-launch tf2|steam
 ```
 
 `run` actions: `shot`, `move`, `move-rel`, `click`, `down`, `up`, `key`, `type`,
-`scroll`, `wait`, `launch`, `focus`, `active`, `cursor`, `screen`.
+`scroll`, `wait`, `focus`, `active`, `cursor`, `screen`.
 
-## Games
+## Apps and games
+
+Launch an app through the desktop launcher (works on any desktop):
 
 ```bash
-# Steam must already be running on the host (the sandbox has no GPU)
-pc-control launch tf2
+pc-control key meta
+pc-control type "konsole"
+pc-control key enter
+```
+
+For games, start the game on the host first, then drive it:
+
+```bash
 pc-control move-rel 120 0        # turn right
 pc-control key w --hold 1000     # walk forward
 pc-control down left             # fire
@@ -122,7 +129,7 @@ live aiming.
 ## Development
 
 ```bash
-python3 -m unittest discover -s tests -v
+python3 -m unittest discover -s etc -v
 ./pc-control --help
 ```
 

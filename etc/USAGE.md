@@ -81,7 +81,7 @@ pc-control run - < actions.json
 ```
 
 Actions: `shot`, `move`, `move-rel`, `click`, `down`, `up`, `key`, `type`,
-`scroll`, `wait`, `launch`, `focus`, `active`, `cursor`, `screen`.
+`scroll`, `wait`, `focus`, `active`, `cursor`, `screen`.
 `run` stops at the first failure unless `--continue-on-error`.
 
 ## Environment

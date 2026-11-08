@@ -26,7 +26,7 @@ import tempfile
 import time
 from pathlib import Path
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 APP = "pc-control"
 DEFAULT_MAX_WIDTH = 1280
 JPEG_QUALITY = 72
@@ -723,41 +723,6 @@ def cmd_scroll(amount: int, horizontal: bool = False) -> dict:
 # apps / diagnostics
 # --------------------------------------------------------------------------- #
 
-def steam_running() -> bool:
-    return subprocess.run(["pgrep", "-x", "steam"], capture_output=True).returncode == 0
-
-
-def tf2_installed() -> bool:
-    roots = [Path.home() / ".steam/steam", Path.home() / ".local/share/Steam"]
-    for base in list(roots):
-        vdf = base / "steamapps/libraryfolders.vdf"
-        try:
-            text = vdf.read_text(errors="ignore")
-        except OSError:
-            continue
-        for match in re.finditer(r'"path"\s*"([^"]+)"', text):
-            roots.append(Path(match.group(1)))
-    return any((root / "steamapps/appmanifest_440.acf").exists() for root in roots)
-
-
-def cmd_launch(name: str) -> dict:
-    if name == "tf2":
-        if not steam_running():
-            raise PcError("Steam is not running on the host",
-                          "Start Steam yourself first; launching it from the sandbox hides the GPU.")
-        proc = subprocess.Popen(
-            ["steam", "-applaunch", "440"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-        return {"ok": True, "app": "tf2", "pid": proc.pid,
-                "note": "TF2 starts via the running Steam client; give it ~20-40s"}
-    if name == "steam":
-        raise PcError("refusing to start Steam inside the sandbox",
-                      "Start Steam on the host (GUI or terminal), then retry.")
-    raise PcError(f"unknown app {name!r}", "available: tf2")
-
-
 def cmd_doctor() -> dict:
     checks = []
 
@@ -783,9 +748,6 @@ def cmd_doctor() -> dict:
     add("kwin", kwin_available(), "qdbus6 + journalctl (cursor/focus feedback)", required=False)
     add("pillow", _has_pillow(), "compact/grid/region shots")
     add("tesseract", bool(which("tesseract")), "OCR (--ocr)", required=False)
-    add("steam", bool(which("steam")), which("steam") or "not found", required=False)
-    tf2 = tf2_installed()
-    add("tf2", tf2, "appmanifest_440 found" if tf2 else "TF2 not found", required=False)
     add("state", _writable(state_dir()), str(state_dir()))
     add("sandbox", True,
         "/dev/uinput is hidden by the agent sandbox; ydotool talks to the host daemon instead",
@@ -840,8 +802,6 @@ def dispatch(action: dict) -> dict:
     if name == "wait":
         time.sleep(max(0, int(action.get("ms", 0))) / 1000.0)
         return {"ok": True, "waited_ms": int(action.get("ms", 0))}
-    if name == "launch":
-        return cmd_launch(action.get("app", "tf2"))
     if name == "cursor":
         return cmd_cursor()
     if name == "screen":
@@ -941,8 +901,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("spec")
     p.add_argument("--continue-on-error", action="store_true")
 
-    p = sub.add_parser("launch")
-    p.add_argument("app", nargs="?", default="tf2", choices=["tf2", "steam"])
 
     sub.add_parser("active")
     sub.add_parser("cursor")
@@ -983,8 +941,6 @@ def main(argv: list[str]) -> None:
             emit({"ok": True, "waited_ms": args.ms})
         if args.command == "run":
             emit(cmd_run(args.spec, args.continue_on_error))
-        if args.command == "launch":
-            emit(cmd_launch(args.app))
         if args.command == "active":
             emit(cmd_active())
         if args.command == "cursor":

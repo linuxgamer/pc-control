@@ -139,6 +139,12 @@ class CliTests(unittest.TestCase):
                              capture_output=True, text=True, check=True)
         self.assertIn("shot", out.stdout)
 
+    def test_tf2_launcher_removed(self):
+        out = subprocess.run([sys.executable, str(CLI), "--help"],
+                             capture_output=True, text=True, check=True)
+        self.assertNotIn("launch", out.stdout)
+        self.assertNotIn("tf2", out.stdout.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

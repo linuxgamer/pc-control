@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Removed the TF2-specific `launch` command; start games yourself and use the
+  desktop launcher (`key meta`, `type "name"`, `key enter`) for apps.
+- Moved docs, tests, and the skill under `etc/`.
+
 ## 0.2.0
 
 - Compact screenshots by default (1280 px wide, JPEG) with automatic mapping

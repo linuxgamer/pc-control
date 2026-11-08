@@ -50,7 +50,7 @@ command -v python3 >/dev/null 2>&1 || {
 
 install -Dm755 "${HERE}/pc-control" "${BIN_DIR}/pc-control"
 if [[ ${INSTALL_SKILL} -eq 1 ]]; then
-  install -Dm644 "${HERE}/skill/SKILL.md" "${SKILL_DIR}/pc-control/SKILL.md"
+  install -Dm644 "${HERE}/etc/SKILL.md" "${SKILL_DIR}/pc-control/SKILL.md"
 fi
 
 echo "installed:"

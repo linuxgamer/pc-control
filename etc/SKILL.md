@@ -1,6 +1,6 @@
 ---
 name: pc-control
-description: Use when the user asks to see, click, type in, or otherwise operate the local Linux desktop or a native app/game on it (screenshots, mouse, keyboard, launching apps/TF2). Works on KDE/GNOME/wlroots under Wayland or X11; not for browser pages, files, or shell-only work.
+description: Use when the user asks to see, click, type in, or otherwise operate the local Linux desktop or a native app/game on it (screenshots, mouse, keyboard, app switching). Works on KDE/GNOME/wlroots under Wayland or X11; not for browser pages, files, or shell-only work.
 ---
 
 # PC control
@@ -73,27 +73,32 @@ pc-control run '[{"action":"shot","ocr":true},
   {"action":"wait","ms":300},{"action":"shot"}]'
 ```
 
-`run` accepts `shot`, `move`, `move-rel`, `click`, `down`, `up`, `key`, `type`, `scroll`, `wait`, `launch`, `focus`, `active`, `cursor`, `screen`.
+`run` accepts `shot`, `move`, `move-rel`, `click`, `down`, `up`, `key`, `type`, `scroll`, `wait`, `focus`, `active`, `cursor`, `screen`.
 
 ## Windows and apps
 
 ```bash
 pc-control active                 # caption + class of the focused window
 pc-control focus konsole          # unminimize + activate by caption/class (KDE)
-pc-control launch tf2             # Steam must already be running
 ```
 
-For an app with no D-Bus activation, use the launcher: `key meta`, `type "name"`, `key enter`.
+Launch an app through the desktop launcher:
 
-## Games (TF2)
+```bash
+pc-control key meta
+pc-control type "konsole"
+pc-control key enter
+```
 
-- `pc-control launch tf2` (Steam must be running on the host; the sandbox has no GPU).
+## Games
+
+- Start the game yourself on the host.
 - Look: `move-rel 120 0` (raw relative; games read it as mouse motion).
 - Move: `key w --hold 1000`; jump `key space`; crouch `key ctrl --hold 500`.
 - Fire: `down left` … `up left`; scope `down right`; tap `click left`.
 - Menus: `key escape`, `key tab`, arrows; `key alt+tab`.
 - Each observe→act cycle is ~1–3 s: suited to walking, menus, chat — not live aiming.
-- VAC/Steam ToS apply; prefer offline/private servers.
+- Anti-cheat/ToS rules apply; prefer offline/private servers.
 
 ## Commands
 
@@ -110,7 +115,6 @@ scroll N [--horizontal]               # negative = down
 wait MS
 run JSON [--continue-on-error]
 active | cursor | focus PATTERN
-launch tf2|steam
 ```
 
 ## Failure handling
