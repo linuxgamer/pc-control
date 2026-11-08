@@ -117,7 +117,7 @@ pause [--reason TEXT] | resume | status
 ```
 
 `run` actions: `shot`, `move`, `move-rel`, `click`, `down`, `up`, `key`, `type`,
-`scroll`, `wait`, `focus`, `active`, `cursor`, `screen`.
+`scroll`, `wait`, `focus`, `active`, `cursor`, `screen`, `status`.
 
 ## Apps and games
 
