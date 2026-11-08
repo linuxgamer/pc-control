@@ -3,7 +3,7 @@
 [![test](https://github.com/linuxgamer/pc-control/actions/workflows/test.yml/badge.svg)](https://github.com/linuxgamer/pc-control/actions/workflows/test.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Desktop control for agents and humans on Linux (Wayland or X11): screenshots,
+Desktop control for agents (and humans) on Linux: screenshots,
 mouse, keyboard, window focus, and app switching.
 
 ## Just want a screenshot?
@@ -44,18 +44,14 @@ pc-control screenshot
 ```
 
 Requirements: Python 3.9+, Pillow, one screenshot backend, and `ydotool` +
-`ydotoold` for input. `--system` installs the input pieces.
-
-`--system` installs:
+`ydotoold` for input. `--system` requires **sudo** and installs:
 
 - `pc-control` to `/usr/local/bin`
 - the skill for your user under `~/.dsh/skills`
 - a **Take Screenshot** menu entry
 - `uinput`, the udev rule, `ydotoold`, and the humanwatch service
 
-**Why sudo?** `/dev/uinput`, udev, and systemd services are system-wide. The
-screenshot and click commands cannot create a virtual mouse/keyboard without
-them. The humanwatch service is optional (`--no-humanwatch`) and writes only a
+The humanwatch service is optional (`--no-humanwatch`) and writes only a
 timestamp — never key contents.
 
 Without root, `./install.sh` installs the CLI to `~/.local/bin` and the skill to
