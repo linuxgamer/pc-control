@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.2
+
+- Clarified the helper path (`./pc-control` in a checkout, `pc-control` when
+  installed) and the difference between display scale and shot downscale.
+- `doctor` now lists installed Tesseract languages and labels display/sandbox
+  details more clearly.
+- Documented OCR language limits and mixed-script behavior.
+
 ## 0.3.1
 
 - Added `pyproject.toml` packaging (`pip install .` / `pipx install .`).

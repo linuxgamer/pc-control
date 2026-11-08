@@ -45,6 +45,14 @@ mapping, OCR language selection, CLI surface).
 - Keep `README.md`, `etc/SKILL.md`, and `etc/USAGE.md` in sync when commands
   change.
 
+## Smoke test
+
+Spawn a fresh agent (no conversation history) with the `pc-control` skill and a
+read-only task: `doctor`, `shot --ocr`, move to the center of the image,
+`cursor`, `active`. Check that it does not pre-scale coordinates, guesses the
+helper path correctly, and reports the JSON shape without hints. Rerun after
+changing the skill or the JSON contract.
+
 ## Debugging ignored clicks
 
 Take a fresh screenshot before concluding that a click was swallowed. Collapsed

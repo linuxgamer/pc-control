@@ -10,6 +10,8 @@ Linux desktop through it. This file is the generic integration guide.
 pc-control doctor
 ```
 
+Run `./pc-control` from a checkout, or `pc-control` when installed.
+
 `ready: true` means screenshots and input are available. If `ydotool` /
 `ydotoold` fail, a human must run `sudo ./setup-uinput.sh` once. Never run sudo
 from the agent.
@@ -55,13 +57,18 @@ Failure (exit 1):
 {"ok":false,"command":"move","error":"...","hint":"..."}
 ```
 
+OCR is best-effort: it depends on the installed Tesseract languages
+(`--ocr-lang` / `PC_OCR_LANG`), and mixed or Cyrillic UI can transliterate.
+
 `shot --ocr` adds `ocr` (string) or `ocr_error`. A window shot has
 `"mappable":false` and cannot be used for coordinates.
 
 ## Coordinate rule
 
 Never scale manually. `move` / `click --at` read the last shot's
-`scale_x`, `scale_y`, `offset_x`, `offset_y` and convert. If the last shot was
+`scale_x`, `scale_y`, `offset_x`, `offset_y` and convert. Do not confuse these
+with the display scale from `doctor` (logical vs native); that one only matters
+for `--scaled` window decorations. If the last shot was
 `--window`, either take a full shot or pass `--native`.
 
 ## Batch format

@@ -149,6 +149,7 @@ live aiming.
 | `move` reports a warning | Retry once; if it persists, take a shot and verify the pointer's effect. |
 | `no screenshot backend` | Install `spectacle`, `grim`, `gnome-screenshot`, `wayshot`, or `scrot`. |
 | `ydotool failed` | `pc-control doctor`; check `ydotoold` and the socket. |
+| OCR text looks wrong | Install the matching Tesseract language and pass `--ocr-lang`; mixed or Cyrillic UI can transliterate. |
 
 ## Configuration
 

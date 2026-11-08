@@ -5,7 +5,7 @@ description: Use when the user asks to see, click, type in, or otherwise operate
 
 # PC control
 
-Helper: `pc-control` (or `./pc-control/pc-control` in a checkout). Every call prints **one JSON object**; non-zero exit means failure. Screenshots come from the compositor; mouse/keyboard come from `ydotool` (uinput), which games see as a real device.
+Helper: `./pc-control` from the repo root, or `pc-control` once installed. Examples below use `pc-control`; prepend `./` in a checkout. Every call prints **one JSON object**; non-zero exit means failure. Screenshots come from the compositor; mouse/keyboard come from `ydotool` (uinput), which games see as a real device.
 
 ## Before acting
 
@@ -37,10 +37,12 @@ Token strategy:
 2. Prefer `--region` around the control you need instead of the whole screen.
 3. Use the default compact shot for layout; request `--grid` only when picking coordinates precisely.
 4. `--window` is for reading an app; take a full shot before clicking because window pixels cannot be mapped to the screen.
+5. OCR is best-effort and depends on installed Tesseract languages. Set `--ocr-lang` or `PC_OCR_LANG`; mixed or Cyrillic UI can degrade or transliterate.
 
 ## Coordinates
 
 - Pass pixels from the latest screenshot **unchanged**. The helper stores the shot geometry and converts to native pixels.
+- Two unrelated scales exist: **display scale** (`doctor` prints it; e.g. 1.25 logical vs native) applies only to `--scaled` window decorations, while **shot `scale_x`** (e.g. 1.5) is the downscale factor and is applied automatically. Never multiply by either.
 - If `mappable` is `false` (window shot), take a full shot or pass `--native`.
 - `cursor` reports both `native` and `shot` coordinates in the latest shot's space.
 - `move` is closed-loop (measure → step → re-measure); it lands within ~2 px in ~1–3 s. A `warning` means it did not converge — take a shot and verify before clicking.
